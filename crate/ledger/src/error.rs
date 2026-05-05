@@ -17,6 +17,12 @@ pub enum Error {
     #[error("invite already exists for {email} in {slug}")]
     InviteExists { slug: String, email: String },
 
+    #[error("user with email {0} already has a password set")]
+    UserExists(String),
+
+    #[error("carry-forward seed already set for this venture")]
+    CarryForwardExists,
+
     #[error("not found")]
     NotFound,
 
@@ -44,6 +50,15 @@ pub fn map_db_error(e: surrealdb::Error) -> Error {
             paid_cents,
             dues_cents,
         };
+    }
+    if msg.contains("carry_forward_immutable") {
+        return Error::CarryForwardExists;
+    }
+    // Re-CREATE on `carry_forward:current` lands here as a duplicate-record
+    // error from SurrealDB. Reshape it so the gateway can return 409 instead
+    // of a generic 500.
+    if msg.contains("Database record `carry_forward:current` already exists") {
+        return Error::CarryForwardExists;
     }
     Error::Db(e)
 }

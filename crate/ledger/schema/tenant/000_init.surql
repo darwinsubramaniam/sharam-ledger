@@ -122,6 +122,39 @@ DEFINE EVENT OVERWRITE contribution_delete_lock ON TABLE contribution
         };
     };
 
+-- ─── carry_forward ──────────────────────────────────────────────────────────
+-- Singleton row capturing money the venture had collected BEFORE migrating
+-- to Sharam. Set ONCE by the owner at venture creation; immutable afterwards.
+-- Treats the period-lock / dues-cap invariants as orthogonal — carry-forward
+-- is treasury seed, not a member dues row, so no per-member or per-period
+-- bookkeeping applies. Use id `carry_forward:current`.
+--
+-- `from_date` / `to_date` are ISO calendar dates (YYYY-MM-DD) describing the
+-- window over which the seed amount was accumulated off-platform. Stored as
+-- strings so there's no tz ambiguity for an inherently fuzzy "this date
+-- range, roughly".
+DEFINE TABLE OVERWRITE carry_forward SCHEMAFULL;
+DEFINE FIELD OVERWRITE from_date    ON carry_forward TYPE string
+    ASSERT string::matches($value, "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+DEFINE FIELD OVERWRITE to_date      ON carry_forward TYPE string
+    ASSERT string::matches($value, "^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$");
+DEFINE FIELD OVERWRITE amount_cents ON carry_forward TYPE int ASSERT $value > 0;
+DEFINE FIELD OVERWRITE note         ON carry_forward TYPE option<string>;
+DEFINE FIELD OVERWRITE recorded_by  ON carry_forward TYPE string
+    ASSERT string::is_email($value);
+DEFINE FIELD OVERWRITE recorded_at  ON carry_forward TYPE datetime
+    DEFAULT time::now() READONLY;
+
+-- Write-once: reject any UPDATE/DELETE so once seeded, the row is permanent.
+-- CREATE on an already-existing id is rejected by SurrealDB itself, so the
+-- "row exists" backstop is the duplicate-id error — the app surfaces that
+-- as Error::CarryForwardExists.
+DEFINE EVENT OVERWRITE carry_forward_immutable ON TABLE carry_forward
+    WHEN $event = "UPDATE" OR $event = "DELETE"
+    THEN {
+        THROW "carry_forward_immutable: the carry-forward seed is set once at venture creation and cannot be modified";
+    };
+
 -- ─── audit_log ──────────────────────────────────────────────────────────────
 DEFINE TABLE OVERWRITE audit_log SCHEMAFULL;
 DEFINE FIELD OVERWRITE actor_email ON audit_log TYPE option<string>;

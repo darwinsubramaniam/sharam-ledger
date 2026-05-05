@@ -3,12 +3,14 @@ use surrealdb::types::{RecordId, SurrealValue};
 
 use common::domain::TenantSlug;
 
-/// Stored row for `user` (control plane).
+/// Stored row for `user` (control plane). `password_hash` is the PHC-format
+/// Argon2id hash and MUST NOT be serialized over the wire.
 #[derive(Debug, Clone, SurrealValue)]
 pub struct UserRecord {
     pub id: RecordId,
     pub email: String,
     pub google_sub: Option<String>,
+    pub password_hash: Option<String>,
     pub display_name: Option<String>,
     pub display_tz: String,
     pub created_at: DateTime<Utc>,
@@ -156,11 +158,23 @@ pub struct AccumulationPoint {
     pub amount_cents: i64,
 }
 
-/// Input to `Ledger::upsert_user`.
+/// Input to `Ledger::upsert_user`. Used by the Google sign-in path —
+/// `password_hash` is intentionally never written here so we don't clobber a
+/// password set on a previous register/login.
 #[derive(Debug, Clone)]
 pub struct UpsertUser {
     pub email: String,
     pub google_sub: String,
+    pub display_name: Option<String>,
+}
+
+/// Input to `Ledger::create_password_user`. Caller hashes the password
+/// (via `auth::hash_password`) before passing it in — the ledger never sees
+/// plaintext.
+#[derive(Debug, Clone)]
+pub struct RegisterPassword {
+    pub email: String,
+    pub password_hash: String,
     pub display_name: Option<String>,
 }
 
@@ -173,4 +187,30 @@ pub struct UpdateSettings {
     pub currency: Option<String>,
     pub cadence: Option<String>,
     pub dues_amount_cents: Option<i64>,
+}
+
+/// Stored row for `carry_forward:current` (per-tenant). Singleton seeded
+/// at venture creation by the owner; immutable thereafter (DB-side EVENT
+/// rejects UPDATE/DELETE, duplicate id rejects re-CREATE). `from_date` and
+/// `to_date` are ISO calendar dates (YYYY-MM-DD) bracketing the off-platform
+/// accumulation window.
+#[derive(Debug, Clone, SurrealValue)]
+pub struct CarryForwardRecord {
+    pub from_date: String,
+    pub to_date: String,
+    pub amount_cents: i64,
+    pub note: Option<String>,
+    pub recorded_by: String,
+    pub recorded_at: DateTime<Utc>,
+}
+
+/// Input to `Ledger::set_carry_forward`. Caller validates date format and
+/// `from_date <= to_date` before passing in; the schema regex is a backstop.
+#[derive(Debug, Clone)]
+pub struct NewCarryForward {
+    pub from_date: String,
+    pub to_date: String,
+    pub amount_cents: i64,
+    pub note: Option<String>,
+    pub recorded_by: String,
 }

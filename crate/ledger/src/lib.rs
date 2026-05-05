@@ -7,7 +7,8 @@ pub use client::Ledger;
 pub use error::{Error, Result};
 pub use surrealdb::types::{RecordId, RecordIdKey};
 pub use types::{
-    AccumulationPoint, ContributionRecord, InviteRecord, MembershipRecord, NewContribution,
-    NewInvite, NewTenant, PeriodSummary, TenantDirectoryRecord, TenantMember, TenantSettings,
-    UpdateSettings, UpsertUser, UserRecord, VentureSummary,
+    AccumulationPoint, CarryForwardRecord, ContributionRecord, InviteRecord, MembershipRecord,
+    NewCarryForward, NewContribution, NewInvite, NewTenant, PeriodSummary, RegisterPassword,
+    TenantDirectoryRecord, TenantMember, TenantSettings, UpdateSettings, UpsertUser, UserRecord,
+    VentureSummary,
 };

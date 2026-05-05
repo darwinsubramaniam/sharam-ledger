@@ -154,10 +154,23 @@ struct AccumulationPointView {
 }
 
 #[derive(Serialize)]
+struct CarryForwardSeed {
+    amount_cents: i64,
+    from_date: String,
+    to_date: String,
+    note: Option<String>,
+}
+
+#[derive(Serialize)]
 struct AccumulationResponse {
     ok: bool,
     bucket: String,
     currency: String,
+    /// Off-platform money the venture had before joining Sharam. When set,
+    /// `series[*].cumulative_cents` already includes this seed at the
+    /// starting offset — the frontend renders a marker for the seed value
+    /// and lets contributions accumulate on top of it.
+    carry_forward: Option<CarryForwardSeed>,
     series: Vec<AccumulationPointView>,
 }
 
@@ -242,7 +255,7 @@ async fn post_contribution(
 ) -> Result<Json<PostContributionResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "contribution post auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -250,7 +263,7 @@ async fn post_contribution(
     let tenant_slug =
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if !caller_is_member(&state, &claims.email, &slug).await? {
+    if !caller_is_member(&state, &identity.email, &slug).await? {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -270,7 +283,7 @@ async fn post_contribution(
         .add_contribution(
             &tenant_slug,
             NewContribution {
-                user_email: claims.email.clone(),
+                user_email: identity.email.clone(),
                 cadence: cadence.clone(),
                 period: period.clone(),
                 amount_cents: payload.amount_cents,
@@ -299,7 +312,7 @@ async fn post_contribution(
 
     let summary = state
         .ledger
-        .period_summary(&tenant_slug, &claims.email, &period)
+        .period_summary(&tenant_slug, &identity.email, &period)
         .await
         .map_err(|e| {
             warn!(error = %e, "period_summary failed");
@@ -308,7 +321,7 @@ async fn post_contribution(
 
     info!(
         slug = %slug,
-        by = %claims.email,
+        by = %identity.email,
         period = %period,
         amount = payload.amount_cents,
         "contribution recorded"
@@ -329,7 +342,7 @@ async fn my_contributions(
 ) -> Result<Json<ListContributionsResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "contribution list auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -337,7 +350,7 @@ async fn my_contributions(
     let tenant_slug =
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if !caller_is_member(&state, &claims.email, &slug).await? {
+    if !caller_is_member(&state, &identity.email, &slug).await? {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -354,7 +367,7 @@ async fn my_contributions(
 
     let rows = state
         .ledger
-        .list_contributions(&tenant_slug, &claims.email, &period)
+        .list_contributions(&tenant_slug, &identity.email, &period)
         .await
         .map_err(|e| {
             warn!(error = %e, "list_contributions failed");
@@ -363,7 +376,7 @@ async fn my_contributions(
 
     let summary = state
         .ledger
-        .period_summary(&tenant_slug, &claims.email, &period)
+        .period_summary(&tenant_slug, &identity.email, &period)
         .await
         .map_err(|e| {
             warn!(error = %e, "period_summary failed");
@@ -401,7 +414,7 @@ async fn pool_contributions(
 ) -> Result<Json<PoolResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "pool list auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -409,7 +422,7 @@ async fn pool_contributions(
     let tenant_slug =
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if !caller_is_member(&state, &claims.email, &slug).await? {
+    if !caller_is_member(&state, &identity.email, &slug).await? {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -490,7 +503,7 @@ async fn active_periods(
 ) -> Result<Json<PeriodsResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "periods auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -498,7 +511,7 @@ async fn active_periods(
     let tenant_slug =
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if !caller_is_member(&state, &claims.email, &slug).await? {
+    if !caller_is_member(&state, &identity.email, &slug).await? {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -535,7 +548,7 @@ async fn accumulation(
 ) -> Result<Json<AccumulationResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "accumulation auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -543,7 +556,7 @@ async fn accumulation(
     let tenant_slug =
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
-    if !caller_is_member(&state, &claims.email, &slug).await? {
+    if !caller_is_member(&state, &identity.email, &slug).await? {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -556,6 +569,14 @@ async fn accumulation(
             warn!(error = %e, "accumulation_points failed");
             err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
         })?;
+    let carry = state
+        .ledger
+        .get_carry_forward(&tenant_slug)
+        .await
+        .map_err(|e| {
+            warn!(error = %e, "get_carry_forward failed");
+            err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?;
 
     let bucket_mode = match q.bucket.as_deref().unwrap_or("auto") {
         "year" => "year",
@@ -563,12 +584,20 @@ async fn accumulation(
         _ => decide_bucket(&points),
     };
 
-    let series = bucket_series(&points, bucket_mode);
+    let seed = carry.as_ref().map(|c| c.amount_cents).unwrap_or(0);
+    let series = bucket_series(&points, bucket_mode, seed);
+    let carry_view = carry.map(|c| CarryForwardSeed {
+        amount_cents: c.amount_cents,
+        from_date: c.from_date,
+        to_date: c.to_date,
+        note: c.note,
+    });
 
     Ok(Json(AccumulationResponse {
         ok: true,
         bucket: bucket_mode.to_string(),
         currency: settings.currency,
+        carry_forward: carry_view,
         series,
     }))
 }
@@ -592,7 +621,13 @@ fn decide_bucket(points: &[AccumulationPoint]) -> &'static str {
 
 /// Group points into buckets keyed by year ("YYYY") or year-month ("YYYY-MM"),
 /// then walk in chronological order computing the running cumulative total.
-fn bucket_series(points: &[AccumulationPoint], mode: &str) -> Vec<AccumulationPointView> {
+/// `initial` seeds the running total — pass the carry-forward amount so the
+/// chart's first cumulative point sits at the venture's starting balance.
+fn bucket_series(
+    points: &[AccumulationPoint],
+    mode: &str,
+    initial: i64,
+) -> Vec<AccumulationPointView> {
     use chrono::Datelike;
     use std::collections::BTreeMap;
     let mut buckets: BTreeMap<String, i64> = BTreeMap::new();
@@ -603,7 +638,7 @@ fn bucket_series(points: &[AccumulationPoint], mode: &str) -> Vec<AccumulationPo
         };
         *buckets.entry(key).or_default() += p.amount_cents;
     }
-    let mut running: i64 = 0;
+    let mut running: i64 = initial;
     buckets
         .into_iter()
         .map(|(bucket, cents)| {

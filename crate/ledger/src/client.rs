@@ -19,9 +19,10 @@ fn endpoint_needs_auth(endpoint: &str) -> bool {
 }
 use crate::sql::{CONTROL_SCHEMA, TENANT_SCHEMA};
 use crate::types::{
-    AccumulationPoint, ContributionRecord, InviteRecord, MembershipRecord, NewContribution,
-    NewInvite, NewTenant, PeriodSummary, TenantDirectoryRecord, TenantMember, TenantSettings,
-    UpdateSettings, UpsertUser, UserRecord, VentureSummary,
+    AccumulationPoint, CarryForwardRecord, ContributionRecord, InviteRecord, MembershipRecord,
+    NewCarryForward, NewContribution, NewInvite, NewTenant, PeriodSummary, RegisterPassword,
+    TenantDirectoryRecord, TenantMember, TenantSettings, UpdateSettings, UpsertUser, UserRecord,
+    VentureSummary,
 };
 
 /// Ledger client. Owns one persistent connection to the control plane and
@@ -61,6 +62,66 @@ impl Ledger {
             )));
         }
         debug!("control schema applied");
+        Ok(())
+    }
+
+    /// Re-apply the tenant schema to every namespace listed in
+    /// `tenant_directory`. Safe and idempotent because every DEFINE in the
+    /// tenant schema uses `OVERWRITE` — re-running it adds new tables/fields
+    /// without touching existing rows.
+    ///
+    /// Call this at startup (after `apply_control_schema`) so existing
+    /// tenants pick up new tables (e.g. `carry_forward`) added in code that
+    /// wasn't present when their namespace was first provisioned.
+    pub async fn migrate_all_tenants(&self) -> Result<()> {
+        info!("migrate_all_tenants: listing tenant_directory");
+        // Pull just the slugs — `TenantDirectoryRecord` deserialization is
+        // not needed here and any field-shape drift would silently zero this
+        // result. `String` is stable.
+        let slugs: Vec<String> = self
+            .inner
+            .control
+            .query("SELECT VALUE slug FROM tenant_directory")
+            .await
+            .map_err(map_db_error)?
+            .take(0)?;
+        let count = slugs.len();
+        info!(count, "migrate_all_tenants: tenants found");
+
+        for slug in slugs {
+            info!(%slug, "migrate_all_tenants: applying tenant schema");
+            // Resolve the cached connection in a tight scope so the sync
+            // MutexGuard cannot escape across an .await.
+            let cached = {
+                self.inner
+                    .tenants
+                    .lock()
+                    .expect("tenant cache poisoned")
+                    .get(&slug)
+                    .cloned()
+            };
+            let tenant_db = match cached {
+                Some(c) => c,
+                None => {
+                    let conn = Self::connect_to(&self.inner.cfg, &slug, "main").await?;
+                    self.inner
+                        .tenants
+                        .lock()
+                        .expect("tenant cache poisoned")
+                        .insert(slug.clone(), conn.clone());
+                    conn
+                }
+            };
+            let mut resp = tenant_db.query(TENANT_SCHEMA).await.map_err(map_db_error)?;
+            let errs = resp.take_errors();
+            if !errs.is_empty() {
+                return Err(Error::Invariant(format!(
+                    "tenant schema apply failed for slug={slug}: {errs:?}"
+                )));
+            }
+            info!(%slug, "migrate_all_tenants: tenant schema re-applied");
+        }
+        info!(count, "tenant schemas migrated");
         Ok(())
     }
 
@@ -143,7 +204,10 @@ impl Ledger {
     }
 
     /// Upsert the Google identity into the control plane. Returns the
-    /// canonical row (whether newly created or existing).
+    /// canonical row (whether newly created or existing). `password_hash` is
+    /// deliberately NOT in the SET clause so a previously registered
+    /// password (from `create_password_user`) is preserved when a user
+    /// signs in with Google for the first time on the same email.
     pub async fn upsert_user(&self, input: UpsertUser) -> Result<UserRecord> {
         let row: Option<UserRecord> = self
             .inner
@@ -158,6 +222,69 @@ impl Ledger {
             )
             .bind(("email", input.email))
             .bind(("google_sub", input.google_sub))
+            .bind(("display_name", input.display_name))
+            .await
+            .map_err(map_db_error)?
+            .take(0)?;
+        row.ok_or(Error::NotFound)
+    }
+
+    /// Look up a user by email. Returns `Ok(None)` if no row exists. Used
+    /// by the password login path to check the stored hash.
+    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<UserRecord>> {
+        let row: Option<UserRecord> = self
+            .inner
+            .control
+            .query("SELECT * FROM ONLY user WHERE email = $email LIMIT 1")
+            .bind(("email", email.to_string()))
+            .await
+            .map_err(map_db_error)?
+            .take(0)?;
+        Ok(row)
+    }
+
+    /// Register a new user with an Argon2id `password_hash`. Behavior:
+    ///   - No row for `email` → CREATE.
+    ///   - Row exists with `password_hash IS NONE` (Google-only user) →
+    ///     attach the password to the existing row (account merge).
+    ///   - Row exists with `password_hash` already set → `Error::UserExists`.
+    pub async fn create_password_user(&self, input: RegisterPassword) -> Result<UserRecord> {
+        if let Some(existing) = self.get_user_by_email(&input.email).await? {
+            if existing.password_hash.is_some() {
+                return Err(Error::UserExists(input.email));
+            }
+            // Attach password to a pre-existing Google-only row. Preserve
+            // existing display_name unless the caller provided a fresh one.
+            let display_name = input.display_name.or(existing.display_name);
+            let row: Option<UserRecord> = self
+                .inner
+                .control
+                .query(
+                    "UPDATE ONLY $id SET \
+                        password_hash = $hash, \
+                        display_name  = $display_name \
+                     RETURN AFTER",
+                )
+                .bind(("id", existing.id))
+                .bind(("hash", input.password_hash))
+                .bind(("display_name", display_name))
+                .await
+                .map_err(map_db_error)?
+                .take(0)?;
+            return row.ok_or(Error::NotFound);
+        }
+        let row: Option<UserRecord> = self
+            .inner
+            .control
+            .query(
+                "CREATE ONLY user SET \
+                    email = $email, \
+                    password_hash = $hash, \
+                    display_name = $display_name \
+                 RETURN AFTER",
+            )
+            .bind(("email", input.email))
+            .bind(("hash", input.password_hash))
             .bind(("display_name", input.display_name))
             .await
             .map_err(map_db_error)?
@@ -713,6 +840,69 @@ impl Ledger {
             return Err(map_db_error(e));
         }
         let row: Option<TenantSettings> = resp.take(0)?;
+        row.ok_or(Error::NotFound)
+    }
+
+    /// Read the per-tenant `carry_forward:current` row, if one has been set.
+    /// Returns `None` for ventures that started fresh on Sharam.
+    pub async fn get_carry_forward(
+        &self,
+        slug: &TenantSlug,
+    ) -> Result<Option<CarryForwardRecord>> {
+        let tenant = self.tenant_db(slug).await?;
+        let row: Option<CarryForwardRecord> = tenant
+            .query("SELECT * FROM ONLY carry_forward:current")
+            .await
+            .map_err(map_db_error)?
+            .take(0)?;
+        Ok(row)
+    }
+
+    /// Seed the venture's carry-forward (off-platform money the treasury
+    /// already held before Sharam). Write-once: returns `Error::CarryForwardExists`
+    /// if a row is already present. Authorization (owner-only) is the
+    /// caller's responsibility — the ledger does not know about Roles.
+    pub async fn set_carry_forward(
+        &self,
+        slug: &TenantSlug,
+        input: NewCarryForward,
+    ) -> Result<CarryForwardRecord> {
+        let tenant = self.tenant_db(slug).await?;
+
+        // Pre-check so the caller gets `CarryForwardExists` even if the
+        // SurrealDB build phrasing of the duplicate-id error drifts. The DB
+        // event + duplicate-id error remain the source-of-truth backstops.
+        let existing: Option<CarryForwardRecord> = tenant
+            .query("SELECT * FROM ONLY carry_forward:current")
+            .await
+            .map_err(map_db_error)?
+            .take(0)?;
+        if existing.is_some() {
+            return Err(Error::CarryForwardExists);
+        }
+
+        let mut resp = tenant
+            .query(
+                "CREATE carry_forward:current SET \
+                    from_date    = $from_date, \
+                    to_date      = $to_date, \
+                    amount_cents = $amount_cents, \
+                    note         = $note, \
+                    recorded_by  = $recorded_by \
+                 RETURN AFTER",
+            )
+            .bind(("from_date", input.from_date))
+            .bind(("to_date", input.to_date))
+            .bind(("amount_cents", input.amount_cents))
+            .bind(("note", input.note))
+            .bind(("recorded_by", input.recorded_by))
+            .await
+            .map_err(map_db_error)?;
+        let errs = resp.take_errors();
+        if let Some((_, e)) = errs.into_iter().next() {
+            return Err(map_db_error(e));
+        }
+        let row: Option<CarryForwardRecord> = resp.take(0)?;
         row.ok_or(Error::NotFound)
     }
 

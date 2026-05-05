@@ -14,6 +14,15 @@ struct CreateTenantRequest {
     dues_amount_cents: i64,
 }
 
+#[derive(Serialize)]
+struct CarryForwardRequest {
+    from_date: String,
+    to_date: String,
+    amount_cents: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    note: Option<String>,
+}
+
 const CADENCES: &[(&str, &str)] = &[
     ("monthly", "Monthly"),
     ("weekly", "Weekly"),
@@ -39,6 +48,21 @@ async fn submit_tenant(req: CreateTenantRequest) -> Result<CreateTenantResponse,
     resp.json::<CreateTenantResponse>()
         .await
         .map_err(|e| ApiError::Other(format!("decode: {e}")))
+}
+
+async fn submit_carry_forward(slug: &str, req: CarryForwardRequest) -> Result<(), ApiError> {
+    let resp = authed(
+        reqwest::Method::POST,
+        &format!("/api/tenants/{slug}/carry-forward"),
+    )?
+    .json(&req)
+    .send()
+    .await
+    .map_err(|e| ApiError::Other(format!("{e:?}")))?;
+    if !resp.status().is_success() {
+        return Err(into_api_error(resp).await);
+    }
+    Ok(())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,6 +130,19 @@ fn parse_dues_to_cents(s: &str) -> Result<i64, String> {
         .ok_or_else(|| "Dues amount is too large.".to_string())
 }
 
+fn is_iso_date(s: &str) -> bool {
+    if s.len() != 10 {
+        return false;
+    }
+    let bytes = s.as_bytes();
+    if bytes[4] != b'-' || bytes[7] != b'-' {
+        return false;
+    }
+    s.chars()
+        .enumerate()
+        .all(|(i, c)| matches!(i, 4 | 7) || c.is_ascii_digit())
+}
+
 fn slugify(name: &str) -> String {
     let mut out = String::with_capacity(name.len());
     let mut prev_underscore = false;
@@ -171,6 +208,14 @@ pub fn CreateTenant() -> Element {
     // Held as the user-facing major-unit string so leading zeros / decimals
     // can be edited freely. Parsed at submit time.
     let mut dues_amount = use_signal(|| "0".to_string());
+    // Optional carry-forward seed — for ventures that already had a kitty
+    // before joining Sharam. Set ONCE at creation; the gateway enforces
+    // write-once via DB EVENT.
+    let mut cf_enabled = use_signal(|| false);
+    let mut cf_from = use_signal(String::new);
+    let mut cf_to = use_signal(String::new);
+    let mut cf_amount = use_signal(String::new);
+    let mut cf_note = use_signal(String::new);
     let mut form_error = use_signal(|| Option::<String>::None);
     let mut flash = use_signal(|| Option::<String>::None);
     let mut submitting = use_signal(|| false);
@@ -223,6 +268,55 @@ pub fn CreateTenant() -> Element {
             }
         };
 
+        // Pre-validate carry-forward client-side so the user gets the error
+        // before we burn the venture-create call. Carry-forward is set in a
+        // second request — if we created the tenant and then bounced on bad
+        // carry-forward input the user would have a tenant they didn't fully
+        // configure (and the seed slot would still be available, just awkward).
+        let cf_payload = if *cf_enabled.read() {
+            let from = cf_from.read().trim().to_string();
+            let to = cf_to.read().trim().to_string();
+            let amount_str = cf_amount.read().trim().to_string();
+            let note_raw = cf_note.read().trim().to_string();
+            if !is_iso_date(&from) || !is_iso_date(&to) {
+                form_error.set(Some(
+                    "Carry-forward dates must be in YYYY-MM-DD format.".into(),
+                ));
+                return;
+            }
+            if from > to {
+                form_error.set(Some(
+                    "Carry-forward 'from' date must be on or before 'to' date.".into(),
+                ));
+                return;
+            }
+            let amount_cents = match parse_dues_to_cents(&amount_str) {
+                Ok(c) if c > 0 => c,
+                Ok(_) => {
+                    form_error.set(Some(
+                        "Carry-forward amount must be greater than zero.".into(),
+                    ));
+                    return;
+                }
+                Err(msg) => {
+                    form_error.set(Some(format!("Carry-forward: {msg}")));
+                    return;
+                }
+            };
+            Some(CarryForwardRequest {
+                from_date: from,
+                to_date: to,
+                amount_cents,
+                note: if note_raw.is_empty() {
+                    None
+                } else {
+                    Some(note_raw)
+                },
+            })
+        } else {
+            None
+        };
+
         submitting.set(true);
         flash.set(None);
         form_error.set(None);
@@ -238,14 +332,43 @@ pub fn CreateTenant() -> Element {
 
         match submit_tenant(req).await {
             Ok(resp) => {
-                flash.set(Some(format!(
+                let mut msg = format!(
                     "Created '{name}' (slug: {}). You are the owner.",
                     resp.slug
-                )));
+                );
+                // Seed the carry-forward in a follow-up call. If it fails we
+                // still keep the tenant — the owner can retry the seed from
+                // the manage page (TODO) or contact support.
+                if let Some(cf) = cf_payload {
+                    let cf_amount_cents = cf.amount_cents;
+                    let cf_from_date = cf.from_date.clone();
+                    let cf_to_date = cf.to_date.clone();
+                    match submit_carry_forward(&resp.slug, cf).await {
+                        Ok(()) => {
+                            msg.push_str(&format!(
+                                " Carry-forward seeded: {} cents covering {} → {}.",
+                                cf_amount_cents, cf_from_date, cf_to_date
+                            ));
+                        }
+                        Err(e) => {
+                            form_error.set(Some(format!(
+                                "Tenant created but carry-forward seed failed: {e}"
+                            )));
+                            submitting.set(false);
+                            return;
+                        }
+                    }
+                }
+                flash.set(Some(msg));
                 display_name.set(String::new());
                 slug.set(String::new());
                 slug_touched.set(false);
                 dues_amount.set("0".to_string());
+                cf_enabled.set(false);
+                cf_from.set(String::new());
+                cf_to.set(String::new());
+                cf_amount.set(String::new());
+                cf_note.set(String::new());
             }
             Err(e) => {
                 form_error.set(Some(e.to_string()));
@@ -460,6 +583,130 @@ pub fn CreateTenant() -> Element {
                                 }
                                 p { class: "text-[11.5px] text-ink-faint mt-1.5",
                                     "Amount each member owes per cycle. Editable later."
+                                }
+                            }
+                        }
+
+                        // Carry-forward (optional, write-once at creation)
+                        div {
+                            class: "mt-7 pt-6 border-t border-rule",
+                            label {
+                                class: "flex items-start gap-3 cursor-pointer",
+                                input {
+                                    r#type: "checkbox",
+                                    checked: *cf_enabled.read(),
+                                    onchange: move |e| {
+                                        cf_enabled.set(e.value() == "true");
+                                        form_error.set(None);
+                                    },
+                                    class: "mt-1 h-4 w-4 accent-evergreen",
+                                }
+                                div {
+                                    p { class: "text-[13.5px] font-medium text-ink",
+                                        "Seed with prior off-platform savings"
+                                    }
+                                    p { class: "text-[12px] text-ink-soft mt-0.5 leading-relaxed",
+                                        "If your venture already collected money before joining Sharam, record it here as the starting balance. "
+                                        span { class: "text-ink-faint italic",
+                                            "Set once at creation — cannot be changed later."
+                                        }
+                                    }
+                                }
+                            }
+
+                            if *cf_enabled.read() {
+                                div {
+                                    class: "mt-5 pl-7 space-y-4",
+
+                                    // Date range
+                                    div {
+                                        class: "grid grid-cols-1 sm:grid-cols-2 gap-4",
+                                        div {
+                                            label {
+                                                class: "block text-[12.5px] font-medium text-ink-soft mb-1.5",
+                                                r#for: "field-cf-from",
+                                                "Accumulated from"
+                                            }
+                                            input {
+                                                id: "field-cf-from",
+                                                r#type: "date",
+                                                value: "{cf_from}",
+                                                oninput: move |e| {
+                                                    cf_from.set(e.value());
+                                                    form_error.set(None);
+                                                },
+                                                class: "w-full bg-paper border border-rule focus:border-evergreen focus:outline-none focus:ring-4 focus:ring-evergreen/10 px-3.5 py-2.5 rounded-md text-[14px] text-ink transition-all",
+                                            }
+                                        }
+                                        div {
+                                            label {
+                                                class: "block text-[12.5px] font-medium text-ink-soft mb-1.5",
+                                                r#for: "field-cf-to",
+                                                "Accumulated to"
+                                            }
+                                            input {
+                                                id: "field-cf-to",
+                                                r#type: "date",
+                                                value: "{cf_to}",
+                                                oninput: move |e| {
+                                                    cf_to.set(e.value());
+                                                    form_error.set(None);
+                                                },
+                                                class: "w-full bg-paper border border-rule focus:border-evergreen focus:outline-none focus:ring-4 focus:ring-evergreen/10 px-3.5 py-2.5 rounded-md text-[14px] text-ink transition-all",
+                                            }
+                                        }
+                                    }
+
+                                    // Amount
+                                    div {
+                                        label {
+                                            class: "block text-[12.5px] font-medium text-ink-soft mb-1.5",
+                                            r#for: "field-cf-amount",
+                                            "Total amount carried forward"
+                                        }
+                                        div {
+                                            class: "flex items-stretch border border-rule bg-paper rounded-md focus-within:border-evergreen focus-within:ring-4 focus-within:ring-evergreen/10 transition-all overflow-hidden",
+                                            span {
+                                                class: "px-3 flex items-center bg-bone-soft border-r border-rule text-ink-faint font-mono text-[12.5px]",
+                                                "{currency}"
+                                            }
+                                            input {
+                                                id: "field-cf-amount",
+                                                r#type: "text",
+                                                inputmode: "decimal",
+                                                autocomplete: "off",
+                                                spellcheck: "false",
+                                                placeholder: "0.00",
+                                                value: "{cf_amount}",
+                                                oninput: move |e| {
+                                                    cf_amount.set(e.value());
+                                                    form_error.set(None);
+                                                },
+                                                class: "flex-1 bg-paper focus:outline-none px-3 py-2.5 font-mono text-[13.5px] text-ink",
+                                            }
+                                        }
+                                        p { class: "text-[11.5px] text-ink-faint mt-1.5",
+                                            "Aggregate sum across all members for the period above."
+                                        }
+                                    }
+
+                                    // Optional note
+                                    div {
+                                        label {
+                                            class: "block text-[12.5px] font-medium text-ink-soft mb-1.5",
+                                            r#for: "field-cf-note",
+                                            "Note "
+                                            span { class: "text-ink-faint font-normal", "(optional)" }
+                                        }
+                                        input {
+                                            id: "field-cf-note",
+                                            r#type: "text",
+                                            placeholder: "e.g. Carried over from informal monthly collection",
+                                            value: "{cf_note}",
+                                            oninput: move |e| cf_note.set(e.value()),
+                                            class: "w-full bg-paper border border-rule focus:border-evergreen focus:outline-none focus:ring-4 focus:ring-evergreen/10 px-3.5 py-2.5 rounded-md text-[14px] text-ink placeholder:text-ink-faint transition-all",
+                                        }
+                                    }
                                 }
                             }
                         }

@@ -31,6 +31,51 @@ async fn control_schema_applies() {
 }
 
 #[tokio::test]
+async fn migrate_all_tenants_preserves_existing_rows() {
+    let l = Ledger::connect(cfg()).await.expect("connect");
+    l.apply_control_schema().await.unwrap();
+
+    let owner = l
+        .upsert_user(UpsertUser {
+            email: "preserve@example.com".into(),
+            google_sub: "g_preserve_1".into(),
+            display_name: None,
+        })
+        .await
+        .unwrap();
+
+    let slug = TenantSlug::new("preserve_fund").unwrap();
+    l.create_tenant(NewTenant {
+        slug: slug.clone(),
+        display_name: "Preserve Fund".into(),
+        timezone: "UTC".into(),
+        currency: "USD".into(),
+        cadence: "monthly".into(),
+        dues_amount_cents: 10_000,
+        created_by: owner.id.clone(),
+    })
+    .await
+    .unwrap();
+
+    // Snapshot what's there before re-applying.
+    let before = l.tenant_settings(&slug).await.unwrap();
+    let memberships_before = l.list_memberships_for("preserve@example.com").await.unwrap();
+
+    // Re-apply — this is what gateway startup now does.
+    l.migrate_all_tenants().await.expect("re-migrate");
+
+    // Settings + memberships still there, untouched.
+    let after = l.tenant_settings(&slug).await.unwrap();
+    assert_eq!(after.display_name, before.display_name);
+    assert_eq!(after.dues_amount_cents, before.dues_amount_cents);
+    assert_eq!(after.cadence, before.cadence);
+
+    let memberships_after = l.list_memberships_for("preserve@example.com").await.unwrap();
+    assert_eq!(memberships_after.len(), memberships_before.len());
+    assert_eq!(memberships_after[0].tenant_slug, slug.as_str());
+}
+
+#[tokio::test]
 async fn create_tenant_and_membership() {
     let l = Ledger::connect(cfg()).await.expect("connect");
     l.apply_control_schema().await.unwrap();

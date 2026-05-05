@@ -350,10 +350,68 @@ fn period_cell_class(status: &str) -> &'static str {
     }
 }
 
-// ─── Page ──────────────────────────────────────────────────────────────────
+// ─── Overview Page ────────────────────────────────────────────────────────
 
 #[component]
-pub fn VenturePage(slug: String) -> Element {
+pub fn OverviewPage(slug: String) -> Element {
+    let slug_for_load = slug.clone();
+    let venture = use_resource(move || {
+        let s = slug_for_load.clone();
+        async move { fetch_venture(s).await }
+    });
+
+    rsx! {
+        Sidenav { active: "venture-overview".to_string(),
+            {match venture() {
+                None => rsx! { LoadingShell { slug: slug.clone() } },
+                Some(Err(ApiError::NotSignedIn)) | Some(Err(ApiError::Unauthorized)) => {
+                    rsx! { SignInPrompt {} }
+                }
+                Some(Err(e)) => {
+                    let msg = e.to_string();
+                    rsx! { ErrorPanel { message: msg } }
+                }
+                Some(Ok(v)) => rsx! {
+                    OverviewBody { v: v }
+                },
+            }}
+        }
+    }
+}
+
+// ─── Contribute Page ──────────────────────────────────────────────────────
+
+#[component]
+pub fn ContributePage(slug: String) -> Element {
+    let slug_for_load = slug.clone();
+    let venture = use_resource(move || {
+        let s = slug_for_load.clone();
+        async move { fetch_venture(s).await }
+    });
+
+    rsx! {
+        Sidenav { active: "venture-contribute".to_string(),
+            {match venture() {
+                None => rsx! { LoadingShell { slug: slug.clone() } },
+                Some(Err(ApiError::NotSignedIn)) | Some(Err(ApiError::Unauthorized)) => {
+                    rsx! { SignInPrompt {} }
+                }
+                Some(Err(e)) => {
+                    let msg = e.to_string();
+                    rsx! { ErrorPanel { message: msg } }
+                }
+                Some(Ok(v)) => rsx! {
+                    ContributeBody { v: v }
+                },
+            }}
+        }
+    }
+}
+
+// ─── Manage Page (admin only) ─────────────────────────────────────────────
+
+#[component]
+pub fn ManagePage(slug: String) -> Element {
     let slug_for_load = slug.clone();
     let mut venture = use_resource(move || {
         let s = slug_for_load.clone();
@@ -371,12 +429,19 @@ pub fn VenturePage(slug: String) -> Element {
                     let msg = e.to_string();
                     rsx! { ErrorPanel { message: msg } }
                 }
-                Some(Ok(v)) => rsx! {
-                    VentureBody {
-                        v: v,
-                        on_saved: move |_| venture.restart(),
+                Some(Ok(v)) => {
+                    let is_admin = v.role == "owner" || v.role == "treasurer";
+                    if !is_admin {
+                        rsx! { NotAdminPanel { slug: v.slug.clone() } }
+                    } else {
+                        rsx! {
+                            ManageBody {
+                                v: v,
+                                on_saved: move |_| venture.restart(),
+                            }
+                        }
                     }
-                },
+                }
             }}
         }
     }
@@ -436,25 +501,13 @@ fn ErrorPanel(message: String) -> Element {
 }
 
 #[component]
-fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
-    let mut editing = use_signal(|| false);
-
-    // Form state lifted from EditCadenceBlock so the Save button in the hero
-    // can read it. Initialized from `v` on mount.
-    let name = use_signal(|| v.display_name.clone());
-    let cad = use_signal(|| v.cadence.clone());
-    let dues_major = use_signal(|| (v.dues_amount_cents / 100).to_string());
-    let tz = use_signal(|| v.timezone.clone());
-    let cur = use_signal(|| v.currency.clone());
-    let mut saving = use_signal(|| false);
-    let mut save_error: Signal<Option<String>> = use_signal(|| None);
+fn OverviewBody(v: VentureDetail) -> Element {
+    let mut drawer_open = use_signal(|| false);
 
     let pill_cls = role_pill(&v.role);
-    let dues = fmt_money(v.dues_amount_cents, &v.currency);
-    let total = fmt_money(v.contribution_total_cents, &v.currency);
+    let is_admin = v.role == "owner" || v.role == "treasurer";
     let cadence_word = cadence_rhythm(&v.cadence);
-    let created = v.created_at.get(..10).unwrap_or("").to_string();
-    let slug_for_save = v.slug.clone();
+    let dues_label = fmt_money(v.dues_amount_cents, &v.currency);
 
     let period_status_pill = match v.period_status.as_str() {
         "open" => "pill pill-evergreen",
@@ -466,9 +519,7 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
         // ── Breadcrumb strip ─────────────────────────────────────────────
         div {
             class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
-            a { href: "/dashboard", class: "hover:text-evergreen transition-colors", "Dashboard" }
-            span { "›" }
-            span { class: "text-ink-soft", "{v.slug}" }
+            span { class: "text-ink-soft", "ns={v.slug}" }
         }
 
         // ── Hero ────────────────────────────────────────────────────────
@@ -493,96 +544,55 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
                         span { class: "{pill_cls}", "{v.role}" }
                         span { class: "{period_status_pill}", "Period {v.current_period} · {v.period_status}" }
                         span { class: "text-[12.5px] text-ink-faint font-mono tracking-[0.06em]",
-                            "{v.timezone} · {v.currency}"
+                            "{cadence_word} · dues {dues_label}"
                         }
                     }
                 }
 
-                // Edit toggle — flips the inline editor
-                if !editing() {
+                // Primary action — open the Contribute drawer.
+                div { class: "shrink-0 flex items-center gap-3 flex-wrap",
                     button {
-                        class: "shrink-0 inline-flex items-center gap-2 border border-rule bg-paper hover:bg-bone-soft text-ink text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
-                        onclick: move |_| editing.set(true),
-                        span { class: "text-evergreen", "✎" }
-                        "Edit venture"
+                        r#type: "button",
+                        class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep text-paper text-[14px] font-medium px-5 py-3 rounded-md transition-colors shadow-[0_8px_24px_-12px_rgba(31,77,61,0.45)]",
+                        onclick: move |_| drawer_open.set(true),
+                        span { class: "text-[16px] leading-none", "+" }
+                        "Contribute"
                     }
-                } else {
-                    div {
-                        class: "shrink-0 flex items-center gap-2",
-                        button {
-                            class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep disabled:opacity-60 disabled:cursor-not-allowed text-paper text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
-                            disabled: saving(),
-                            onclick: {
-                                let slug = slug_for_save.clone();
-                                move |_| {
-                                    let slug = slug.clone();
-                                    async move {
-                                        saving.set(true);
-                                        save_error.set(None);
-                                        let dues_cents = dues_major()
-                                            .trim()
-                                            .parse::<i64>()
-                                            .unwrap_or(0)
-                                            .saturating_mul(100);
-                                        let req = UpdateSettingsRequest {
-                                            display_name: Some(name()),
-                                            timezone: Some(tz()),
-                                            currency: Some(cur()),
-                                            cadence: Some(cad()),
-                                            dues_amount_cents: Some(dues_cents),
-                                        };
-                                        match save_settings(&slug, req).await {
-                                            Ok(()) => {
-                                                editing.set(false);
-                                                on_saved.call(());
-                                            }
-                                            Err(e) => save_error.set(Some(e.to_string())),
-                                        }
-                                        saving.set(false);
-                                    }
-                                }
-                            },
-                            if saving() { "Saving…" } else { "Save changes" }
-                        }
-                        button {
-                            class: "inline-flex items-center text-[13px] text-ink-soft hover:text-ink px-3 py-2.5 transition-colors",
-                            disabled: saving(),
-                            onclick: move |_| {
-                                save_error.set(None);
-                                editing.set(false);
-                            },
-                            "Cancel"
+                    if is_admin {
+                        a {
+                            href: "/ventures/{v.slug}/manage",
+                            class: "inline-flex items-center gap-2 border border-rule bg-paper hover:bg-bone-soft text-ink-soft hover:text-ink text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
+                            span { class: "text-evergreen", "⚙" }
+                            "Manage"
                         }
                     }
                 }
             }
-
-            if let Some(msg) = save_error() {
-                p {
-                    class: "mt-4 text-[12.5px] text-negative font-mono",
-                    "Save failed: {msg}"
-                }
-            }
         }
 
-        // ── Purpose pull-quote / editor ─────────────────────────────────
-        if !editing() {
-            PurposeBlock { purpose: v.purpose.clone() }
-        } else {
-            EditPurposeBlock { initial: v.purpose.clone().unwrap_or_default() }
+        // ── Holding summary — the venture's balance sheet headline ─────
+        HoldingSummary {
+            slug: v.slug.clone(),
+            currency: v.currency.clone(),
+            is_admin: is_admin,
         }
 
-        // ── Cadence rhythm strip ────────────────────────────────────────
+        // ── Purpose pull-quote ───────────────────────────────────────────
+        PurposeBlock { purpose: v.purpose.clone() }
+
+        // ── Accumulation chart over the venture's lifetime ─────────────
+        AccumulationChart { slug: v.slug.clone(), currency: v.currency.clone() }
+
+        // ── Rhythm strip — last six periods ─────────────────────────────
         section {
-            class: "px-6 lg:px-12 py-12 max-w-[1140px] rise",
-            style: "animation-delay: 0.12s",
+            class: "px-6 lg:px-12 pb-12 max-w-[1140px] rise",
+            style: "animation-delay: 0.20s",
 
             div {
                 class: "flex items-baseline justify-between mb-5",
                 p { class: "eyebrow", "RHYTHM · LAST SIX PERIODS" }
                 p { class: "text-[12px] text-ink-faint font-mono",
-                    "{cadence_word} · dues "
-                    span { class: "text-ink-soft", "{dues}" }
+                    "{cadence_word}"
                 }
             }
 
@@ -600,7 +610,6 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
                 }
             }
 
-            // Legend
             div {
                 class: "mt-5 flex flex-wrap gap-x-5 gap-y-2 text-[11px] text-ink-faint font-mono uppercase tracking-[0.1em]",
                 LegendDot { tone: "verified" }
@@ -610,72 +619,204 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
             }
         }
 
-        // ── My contributions this period ────────────────────────────────
-        if !editing() {
-            MyPeriodPanel { slug: v.slug.clone(), currency: v.currency.clone() }
+        // ── Audit log — every payment recorded into the selected period ─
+        AuditLogPanel { slug: v.slug.clone() }
+
+        // ── Drawer (overlay) ────────────────────────────────────────────
+        if drawer_open() {
+            ContributeDrawer {
+                slug: v.slug.clone(),
+                display_name: v.display_name.clone(),
+                currency: v.currency.clone(),
+                period: v.current_period.clone(),
+                on_close: move |_| drawer_open.set(false),
+            }
+        }
+    }
+}
+
+// ─── Contribute body (full-page version, route /contribute) ───────────────
+
+#[component]
+fn ContributeBody(v: VentureDetail) -> Element {
+    let cadence_word = cadence_rhythm(&v.cadence);
+    let dues_label = fmt_money(v.dues_amount_cents, &v.currency);
+
+    rsx! {
+        // Breadcrumb
+        div {
+            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            a { href: "/ventures/{v.slug}", class: "hover:text-evergreen transition-colors", "ns={v.slug}" }
+            span { "›" }
+            span { class: "text-ink-soft", "Contribute" }
         }
 
-        // ── Venture-wide pool for the selected period ──────────────────
-        if !editing() {
-            VenturePoolPanel { slug: v.slug.clone() }
+        // Hero — quiet, focused on the act of paying.
+        section {
+            class: "px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
+            style: "animation-delay: 0.04s",
+
+            p { class: "eyebrow mb-3",
+                "CONTRIBUTE · "
+                span { class: "text-evergreen", "{v.slug}" }
+            }
+            h1 {
+                class: "display text-[clamp(1.75rem,4vw,2.75rem)] font-light leading-[1.08] text-ink",
+                "Record a payment to {v.display_name}"
+            }
+            p {
+                class: "mt-4 text-[14px] text-ink-soft max-w-2xl",
+                "{cadence_word} · dues "
+                span { class: "text-ink", "{dues_label}" }
+                ". Partial payments add up — submit any amount up to the cycle cap. Period {v.current_period} is open."
+            }
         }
 
-        // ── Accumulation chart over the venture's lifetime ─────────────
-        if !editing() {
-            AccumulationChart { slug: v.slug.clone(), currency: v.currency.clone() }
+        // The form + history live in MyPeriodPanel — same component the drawer uses.
+        MyPeriodPanel { slug: v.slug.clone(), currency: v.currency.clone() }
+
+        // Footer link — back to overview to see collective progress.
+        section {
+            class: "px-6 lg:px-12 pb-16 max-w-[1140px]",
+            div { class: "border-t border-rule pt-6 flex flex-wrap items-center justify-between gap-4",
+                p { class: "text-[12.5px] text-ink-faint font-mono",
+                    "Looking for the venture-wide collected total?"
+                }
+                a {
+                    href: "/ventures/{v.slug}",
+                    class: "inline-flex items-center gap-2 text-[13px] text-evergreen hover:text-evergreen-deep border-b border-evergreen/40 hover:border-evergreen transition-colors",
+                    "← Back to overview"
+                }
+            }
+        }
+    }
+}
+
+// ─── Manage body (admin only) ─────────────────────────────────────────────
+
+#[component]
+fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
+    let name = use_signal(|| v.display_name.clone());
+    let cad = use_signal(|| v.cadence.clone());
+    let dues_major = use_signal(|| (v.dues_amount_cents / 100).to_string());
+    let tz = use_signal(|| v.timezone.clone());
+    let cur = use_signal(|| v.currency.clone());
+    let mut saving = use_signal(|| false);
+    let mut save_error: Signal<Option<String>> = use_signal(|| None);
+    let mut save_flash: Signal<Option<String>> = use_signal(|| None);
+
+    let pill_cls = role_pill(&v.role);
+    let cadence_word = cadence_rhythm(&v.cadence);
+    let created = v.created_at.get(..10).unwrap_or("").to_string();
+    let slug_for_save = v.slug.clone();
+
+    rsx! {
+        // Breadcrumb
+        div {
+            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            a { href: "/ventures/{v.slug}", class: "hover:text-evergreen transition-colors", "ns={v.slug}" }
+            span { "›" }
+            span { class: "text-ink-soft", "Manage" }
         }
 
-        // ── Stats + Cadence settings split ──────────────────────────────
-        if !editing() {
-            section {
-                class: "px-6 lg:px-12 pb-12 max-w-[1140px] grid grid-cols-1 lg:grid-cols-12 gap-6 rise",
-                style: "animation-delay: 0.16s",
+        // Hero — admin tone.
+        section {
+            class: "px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
+            style: "animation-delay: 0.04s",
 
-                // Left: cadence settings card
-                div { class: "lg:col-span-7 card p-6",
-                    p { class: "eyebrow mb-5", "CADENCE & DUES" }
+            div { class: "flex flex-wrap items-end justify-between gap-6",
+                div {
+                    p { class: "eyebrow mb-3",
+                        "MANAGE · "
+                        span { class: "text-evergreen", "{v.slug}" }
+                    }
+                    h1 {
+                        class: "display text-[clamp(1.75rem,4vw,2.75rem)] font-light leading-[1.08] text-ink",
+                        "{v.display_name}"
+                    }
                     div {
-                        class: "grid grid-cols-2 gap-x-6 gap-y-5",
-                        FactRow { label: "Cadence",         value: v.cadence.clone() }
-                        FactRow { label: "Dues / cycle",    value: dues.clone() }
-                        FactRow { label: "Currency",        value: v.currency.clone() }
-                        FactRow { label: "Time zone",       value: v.timezone.clone() }
-                        FactRow { label: "Current period",  value: v.current_period.clone() }
-                        FactRow { label: "Opened",          value: created.clone() }
+                        class: "mt-4 flex items-center gap-3 flex-wrap",
+                        span { class: "{pill_cls}", "{v.role}" }
+                        span { class: "text-[12.5px] text-ink-faint font-mono tracking-[0.06em]",
+                            "Opened {created} · {cadence_word}"
+                        }
                     }
                 }
-
-                // Right: at-a-glance metrics, well-styled
-                div { class: "lg:col-span-5 well p-6 flex flex-col gap-5",
-                    p { class: "eyebrow", "AT A GLANCE" }
-                    Metric {
-                        label: "Members",
-                        value: format!("{}", v.member_count),
-                        suffix: "active".to_string(),
-                    }
-                    Metric {
-                        label: "Lifetime contributions",
-                        value: total,
-                        suffix: "verified".to_string(),
-                    }
-                    Metric {
-                        label: "Outstanding this period",
-                        value: format!("{}", v.outstanding_count),
-                        suffix: format!("of {} members", v.member_count),
+                div {
+                    class: "shrink-0 inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep disabled:opacity-60 disabled:cursor-not-allowed text-paper text-[13px] font-medium rounded-md transition-colors",
+                    style: "padding: 0;",
+                    button {
+                        r#type: "button",
+                        class: "px-5 py-3 disabled:cursor-not-allowed",
+                        disabled: saving(),
+                        onclick: {
+                            let slug = slug_for_save.clone();
+                            let name = name;
+                            let cad = cad;
+                            let dues_major = dues_major;
+                            let tz = tz;
+                            let cur = cur;
+                            move |_| {
+                                let slug = slug.clone();
+                                async move {
+                                    saving.set(true);
+                                    save_error.set(None);
+                                    save_flash.set(None);
+                                    let dues_cents = dues_major()
+                                        .trim()
+                                        .parse::<i64>()
+                                        .unwrap_or(0)
+                                        .saturating_mul(100);
+                                    let req = UpdateSettingsRequest {
+                                        display_name: Some(name()),
+                                        timezone: Some(tz()),
+                                        currency: Some(cur()),
+                                        cadence: Some(cad()),
+                                        dues_amount_cents: Some(dues_cents),
+                                    };
+                                    match save_settings(&slug, req).await {
+                                        Ok(()) => {
+                                            save_flash.set(Some("Saved.".into()));
+                                            on_saved.call(());
+                                        }
+                                        Err(e) => save_error.set(Some(e.to_string())),
+                                    }
+                                    saving.set(false);
+                                }
+                            }
+                        },
+                        if saving() { "Saving…" } else { "Save changes" }
                     }
                 }
             }
-        } else {
-            EditCadenceBlock {
-                name: name,
-                cad: cad,
-                dues_major: dues_major,
-                tz: tz,
-                cur: cur,
+
+            if let Some(msg) = save_error() {
+                p {
+                    class: "mt-4 text-[12.5px] text-negative font-mono",
+                    "Save failed: {msg}"
+                }
+            }
+            if let Some(msg) = save_flash() {
+                p {
+                    class: "mt-4 text-[12.5px] text-positive font-mono",
+                    "{msg}"
+                }
             }
         }
 
-        // ── Members section ─────────────────────────────────────────────
+        // Editor: purpose
+        EditPurposeBlock { initial: v.purpose.clone().unwrap_or_default() }
+
+        // Editor: cadence + dues + tz + currency
+        EditCadenceBlock {
+            name: name,
+            cad: cad,
+            dues_major: dues_major,
+            tz: tz,
+            cur: cur,
+        }
+
+        // Members table — full
         section {
             class: "px-6 lg:px-12 pb-16 max-w-[1140px] rise",
             style: "animation-delay: 0.20s",
@@ -699,7 +840,6 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
 
             div {
                 class: "card overflow-hidden",
-                // Header row
                 div {
                     class: "grid grid-cols-[2.4fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
                     span { "Member" }
@@ -726,12 +866,108 @@ fn VentureBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
                 }
             }
 
-            // Audit footer note
             p {
                 class: "mt-6 text-[12px] text-ink-faint font-mono leading-[1.6] max-w-2xl",
                 "Members listed here are joined via accepted invites in the control plane. "
                 "Removal does not delete prior contributions — period-locked rows remain visible "
                 "in the audit log for the lifetime of the venture."
+            }
+        }
+    }
+}
+
+// ─── Not-admin gate for /manage ───────────────────────────────────────────
+
+#[component]
+fn NotAdminPanel(slug: String) -> Element {
+    rsx! {
+        section {
+            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+            div { class: "card p-8",
+                p { class: "eyebrow !text-amber mb-2", "ADMIN ONLY" }
+                h2 { class: "font-display text-[22px] font-semibold text-ink",
+                    "Manage is for owners and treasurers"
+                }
+                p { class: "mt-2 text-[14px] text-ink-soft max-w-2xl",
+                    "You're a member of this venture, but settings and member management are reserved \
+                    for admins. You can still see the venture's pool, lifetime totals, and submit \
+                    contributions from the overview."
+                }
+                div { class: "mt-6 flex flex-wrap items-center gap-4",
+                    a {
+                        href: "/ventures/{slug}",
+                        class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep text-paper text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
+                        "Open overview →"
+                    }
+                    a {
+                        href: "/ventures/{slug}/contribute",
+                        class: "inline-flex items-center gap-2 text-[13px] text-evergreen hover:text-evergreen-deep border-b border-evergreen/40 hover:border-evergreen transition-colors",
+                        "Or contribute now"
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ─── Contribute drawer (overlay launched from Overview) ───────────────────
+
+#[component]
+fn ContributeDrawer(
+    slug: String,
+    display_name: String,
+    currency: String,
+    period: String,
+    on_close: EventHandler<()>,
+) -> Element {
+    let slug_full_link = slug.clone();
+    rsx! {
+        // Overlay scrim — click closes.
+        div {
+            class: "drawer-overlay",
+            onclick: move |_| on_close.call(()),
+        }
+        // Right-side panel.
+        aside {
+            class: "drawer",
+            // Header
+            div {
+                class: "px-6 pt-6 pb-4 border-b border-rule flex items-start justify-between gap-4",
+                div {
+                    p { class: "eyebrow mb-1", "CONTRIBUTE · PERIOD {period}" }
+                    h2 {
+                        class: "font-display text-[22px] font-semibold text-ink leading-tight",
+                        "{display_name}"
+                    }
+                }
+                button {
+                    r#type: "button",
+                    onclick: move |_| on_close.call(()),
+                    class: "shrink-0 h-9 w-9 rounded-md text-ink-soft hover:bg-bone-soft hover:text-ink transition-colors flex items-center justify-center text-[18px] leading-none",
+                    "×"
+                }
+            }
+
+            // Body — same MyPeriodPanel the full page uses, but in compact
+            // (vertically stacked) mode for the narrow drawer.
+            div {
+                class: "drawer-body",
+                MyPeriodPanel {
+                    slug: slug.clone(),
+                    currency: currency.clone(),
+                    compact: true,
+                }
+            }
+
+            // Footer — escape hatch to full page.
+            div {
+                class: "px-6 py-4 border-t border-rule bg-bone-soft/60 flex items-center justify-between text-[12.5px]",
+                p { class: "text-ink-faint font-mono", "Need more room?" }
+                a {
+                    href: "/ventures/{slug_full_link}/contribute",
+                    class: "text-evergreen hover:text-evergreen-deep border-b border-evergreen/40 hover:border-evergreen",
+                    "Open full page →"
+                }
             }
         }
     }
@@ -1074,7 +1310,16 @@ fn Hairline() -> Element {
 // ─── My-period contribution panel ──────────────────────────────────────────
 
 #[component]
-fn MyPeriodPanel(slug: String, currency: String) -> Element {
+fn MyPeriodPanel(
+    slug: String,
+    currency: String,
+    /// Compact mode for the right drawer — drops the 2-column inner layout
+    /// and stacks progress / stats / form vertically. The page version
+    /// (`/ventures/:slug/contribute`) leaves this off so the wide layout
+    /// breathes across the card.
+    #[props(default = false)]
+    compact: bool,
+) -> Element {
     let slug_for_load = slug.clone();
     let mut data = use_resource(move || {
         let s = slug_for_load.clone();
@@ -1086,9 +1331,15 @@ fn MyPeriodPanel(slug: String, currency: String) -> Element {
     let mut submitting = use_signal(|| false);
     let mut submit_error: Signal<Option<String>> = use_signal(|| None);
 
+    let section_class = if compact {
+        "rise"
+    } else {
+        "px-6 lg:px-12 pb-12 max-w-[1140px] rise"
+    };
+
     rsx! {
         section {
-            class: "px-6 lg:px-12 pb-12 max-w-[1140px] rise",
+            class: "{section_class}",
             style: "animation-delay: 0.14s",
 
             {match data() {
@@ -1164,124 +1415,203 @@ fn MyPeriodPanel(slug: String, currency: String) -> Element {
                         }
                     };
 
-                    rsx! {
+                    let progress_block = rsx! {
                         div {
-                            class: "flex items-baseline justify-between mb-5",
                             div {
+                                class: "flex items-baseline justify-between",
+                                p { class: "eyebrow", "PROGRESS" }
+                                p { class: "text-[12px] text-ink-faint font-mono tnum", "{pct}%" }
+                            }
+                            div {
+                                class: "mt-2.5 h-2.5 rounded-full bg-bone-soft border border-rule overflow-hidden",
+                                div {
+                                    class: "{bar_cls}",
+                                    style: "width: {pct}%",
+                                }
+                            }
+                        }
+                    };
+
+                    let stats_block = rsx! {
+                        div {
+                            class: "grid grid-cols-3 gap-3",
+                            SmallFact { label: "Dues",      value: dues_label.clone() }
+                            SmallFact { label: "Paid",      value: paid_label.clone() }
+                            SmallFact { label: "Remaining", value: remain_label.clone() }
+                        }
+                    };
+
+                    // Bare major-unit string for the Max button — "100.00",
+                    // not "100.00 MYR". Drops trailing ".00" cents-only when
+                    // the remainder is whole units to keep the input tidy.
+                    let max_major = if remain % 100 == 0 {
+                        format!("{}", remain / 100)
+                    } else {
+                        format!("{}.{:02}", remain / 100, remain % 100)
+                    };
+
+                    let form_block = rsx! {
+                        if remain == 0 && dues > 0 {
+                            div {
+                                class: "well p-5 flex flex-col items-start gap-2",
+                                p { class: "eyebrow !text-positive", "SETTLED" }
+                                p { class: "font-display text-[19px] text-ink leading-tight",
+                                    "You're paid up for {period}."
+                                }
+                                p { class: "text-[12.5px] text-ink-soft leading-[1.55]",
+                                    "The cap for this cycle has been met. New payments are blocked until the next period opens."
+                                }
+                            }
+                        } else {
+                            div { class: "flex flex-col gap-3",
+                                p { class: "eyebrow", "RECORD A PAYMENT" }
+
+                                // Amount — full width with currency chip.
+                                // The label row hosts a "Max" shortcut that
+                                // fills the input with the current remaining
+                                // amount, sparing repeat typing of the cap.
+                                div {
+                                    div {
+                                        class: "flex items-baseline justify-between mb-1.5",
+                                        label {
+                                            class: "text-[11.5px] text-ink-faint font-mono uppercase tracking-[0.1em]",
+                                            "Amount"
+                                        }
+                                        button {
+                                            r#type: "button",
+                                            disabled: submitting(),
+                                            onclick: {
+                                                let max = max_major.clone();
+                                                move |_| {
+                                                    amount_input.set(max.clone());
+                                                    submit_error.set(None);
+                                                }
+                                            },
+                                            class: "text-[11px] font-mono uppercase tracking-[0.08em] text-evergreen hover:text-evergreen-deep border border-evergreen/40 hover:border-evergreen bg-evergreen/5 hover:bg-evergreen/10 disabled:opacity-50 disabled:cursor-not-allowed rounded px-2 py-0.5 transition-colors",
+                                            "Max"
+                                        }
+                                    }
+                                    div {
+                                        class: "flex items-stretch border border-rule rounded-md overflow-hidden focus-within:border-evergreen focus-within:ring-2 focus-within:ring-evergreen/15 transition",
+                                        span {
+                                            class: "px-3.5 flex items-center bg-bone-soft text-ink-soft font-mono text-[13px] border-r border-rule tnum",
+                                            "{currency}"
+                                        }
+                                        input {
+                                            r#type: "number",
+                                            min: "0",
+                                            step: "0.01",
+                                            placeholder: "0.00",
+                                            class: "flex-1 min-w-0 px-3.5 py-3 text-[16px] text-ink bg-paper outline-none tnum",
+                                            value: "{amount_input}",
+                                            oninput: move |e| amount_input.set(e.value()),
+                                            disabled: submitting(),
+                                        }
+                                    }
+                                }
+
+                                // Note — full width.
+                                div {
+                                    label {
+                                        class: "block text-[11.5px] text-ink-faint font-mono uppercase tracking-[0.1em] mb-1.5",
+                                        "Note "
+                                        span { class: "text-ink-faint normal-case font-light", "· optional" }
+                                    }
+                                    input {
+                                        r#type: "text",
+                                        placeholder: "e.g. bank transfer ref #1247",
+                                        class: "w-full bg-paper border border-rule focus:border-evergreen focus:ring-2 focus:ring-evergreen/15 outline-none rounded-md px-3.5 py-3 text-[15px] text-ink transition",
+                                        value: "{note_input}",
+                                        oninput: move |e| note_input.set(e.value()),
+                                        disabled: submitting(),
+                                    }
+                                }
+
+                                button {
+                                    class: "mt-1 inline-flex items-center justify-center gap-2 bg-evergreen hover:bg-evergreen-deep disabled:opacity-60 disabled:cursor-not-allowed text-paper text-[14px] font-medium px-5 py-3 rounded-md transition-colors",
+                                    disabled: submitting(),
+                                    onclick: on_submit,
+                                    if submitting() { "Recording…" } else { "Record payment" }
+                                    if !submitting() {
+                                        span { class: "text-[15px] leading-none", "→" }
+                                    }
+                                }
+
+                                if let Some(msg) = submit_error() {
+                                    p {
+                                        class: "text-[12.5px] text-negative font-mono leading-[1.5]",
+                                        "{msg}"
+                                    }
+                                }
+                                p {
+                                    class: "text-[11.5px] text-ink-faint font-mono leading-[1.55]",
+                                    "Payments are capped at the dues amount per cycle. Submissions that push the period total over the cap are refused."
+                                }
+                            }
+                        }
+                    };
+
+                    rsx! {
+                        // Header — page version reserves the right rail for
+                        // the cap microcopy; drawer stacks vertically.
+                        if compact {
+                            div { class: "mb-4",
                                 p { class: "eyebrow", "MY PAYMENTS · PERIOD {period}" }
-                                h2 { class: "mt-2 font-display text-[24px] font-semibold text-ink leading-tight",
+                                h2 { class: "mt-1.5 font-display text-[20px] font-semibold text-ink leading-tight",
                                     "What you owe this cycle"
                                 }
                             }
-                            p {
-                                class: "text-[12px] text-ink-faint font-mono",
-                                "Cap is one cycle of dues. Partial payments add up."
+                        } else {
+                            div {
+                                class: "flex items-baseline justify-between mb-5 gap-6",
+                                div {
+                                    p { class: "eyebrow", "MY PAYMENTS · PERIOD {period}" }
+                                    h2 { class: "mt-2 font-display text-[24px] font-semibold text-ink leading-tight",
+                                        "What you owe this cycle"
+                                    }
+                                }
+                                p {
+                                    class: "text-[12px] text-ink-faint font-mono shrink-0",
+                                    "Cap is one cycle of dues. Partial payments add up."
+                                }
                             }
                         }
 
-                        div { class: "card p-6 grid grid-cols-1 lg:grid-cols-12 gap-8",
-
-                            // ── Left: progress + summary ─────────────────────
-                            div { class: "lg:col-span-5 flex flex-col gap-5",
-                                div {
-                                    div {
-                                        class: "flex items-baseline justify-between",
-                                        p { class: "eyebrow", "PROGRESS" }
-                                        p { class: "text-[12px] text-ink-faint font-mono tnum", "{pct}%" }
-                                    }
-                                    div {
-                                        class: "mt-3 h-3 rounded-full bg-bone-soft border border-rule overflow-hidden",
-                                        div {
-                                            class: "{bar_cls}",
-                                            style: "width: {pct}%",
-                                        }
-                                    }
-                                }
-                                div {
-                                    class: "grid grid-cols-3 gap-4",
-                                    SmallFact { label: "Dues",      value: dues_label }
-                                    SmallFact { label: "Paid",      value: paid_label }
-                                    SmallFact { label: "Remaining", value: remain_label }
+                        // Card — vertical stack in compact, 2-col in page.
+                        if compact {
+                            div { class: "card p-5 flex flex-col gap-5",
+                                {progress_block}
+                                {stats_block}
+                                div { class: "border-t border-rule-soft pt-5",
+                                    {form_block}
                                 }
                             }
-
-                            // ── Right: submit form OR settled banner ─────────
-                            div { class: "lg:col-span-7",
-                                if remain == 0 && dues > 0 {
-                                    div {
-                                        class: "h-full flex flex-col justify-center items-start gap-2 well p-6",
-                                        p { class: "eyebrow !text-positive", "SETTLED" }
-                                        p { class: "font-display text-[20px] text-ink",
-                                            "You're paid up for {period}."
-                                        }
-                                        p { class: "text-[12.5px] text-ink-soft",
-                                            "The cap for this cycle has been met. New payments are blocked until the next period opens."
-                                        }
-                                    }
-                                } else {
-                                    div { class: "flex flex-col gap-3",
-                                        p { class: "eyebrow", "RECORD A PAYMENT" }
-                                        div { class: "grid grid-cols-1 sm:grid-cols-[1fr_2fr_auto] gap-3 items-stretch",
-                                            div { class: "flex items-stretch border border-rule rounded-md overflow-hidden focus-within:border-evergreen focus-within:ring-2 focus-within:ring-evergreen/15 transition",
-                                                span {
-                                                    class: "px-3 flex items-center bg-bone-soft text-ink-soft font-mono text-[13px] border-r border-rule tnum",
-                                                    "{currency}"
-                                                }
-                                                input {
-                                                    r#type: "number",
-                                                    min: "0",
-                                                    step: "0.01",
-                                                    placeholder: "Amount",
-                                                    class: "flex-1 min-w-0 px-3.5 py-2.5 text-[15px] text-ink bg-paper outline-none tnum",
-                                                    value: "{amount_input}",
-                                                    oninput: move |e| amount_input.set(e.value()),
-                                                    disabled: submitting(),
-                                                }
-                                            }
-                                            input {
-                                                r#type: "text",
-                                                placeholder: "Note (optional)",
-                                                class: "bg-paper border border-rule focus:border-evergreen focus:ring-2 focus:ring-evergreen/15 outline-none rounded-md px-3.5 py-2.5 text-[15px] text-ink transition",
-                                                value: "{note_input}",
-                                                oninput: move |e| note_input.set(e.value()),
-                                                disabled: submitting(),
-                                            }
-                                            button {
-                                                class: "inline-flex items-center justify-center gap-2 bg-evergreen hover:bg-evergreen-deep disabled:opacity-60 disabled:cursor-not-allowed text-paper text-[13px] font-medium px-5 py-2.5 rounded-md transition-colors",
-                                                disabled: submitting(),
-                                                onclick: on_submit,
-                                                if submitting() { "Recording…" } else { "Record payment" }
-                                            }
-                                        }
-                                        if let Some(msg) = submit_error() {
-                                            p {
-                                                class: "text-[12.5px] text-negative font-mono",
-                                                "{msg}"
-                                            }
-                                        }
-                                        p {
-                                            class: "text-[11.5px] text-ink-faint font-mono leading-[1.5]",
-                                            "Payments are capped at the dues amount per cycle. The ledger refuses any submission that would push the period total over the cap."
-                                        }
-                                    }
+                        } else {
+                            div { class: "card p-6 grid grid-cols-1 lg:grid-cols-12 gap-8",
+                                div { class: "lg:col-span-5 flex flex-col gap-5",
+                                    {progress_block}
+                                    {stats_block}
+                                }
+                                div { class: "lg:col-span-7",
+                                    {form_block}
                                 }
                             }
                         }
 
                         // ── Payment history this period ──────────────────────
                         div {
-                            class: "mt-6",
+                            class: if compact { "mt-5" } else { "mt-6" },
                             p { class: "eyebrow mb-3", "THIS PERIOD'S PAYMENTS · {rows.len()}" }
                             if rows.is_empty() {
                                 div {
-                                    class: "card px-5 py-6 text-[13px] text-ink-soft",
+                                    class: "card px-5 py-5 text-[13px] text-ink-soft",
                                     "No payments recorded yet for {period}."
                                 }
                             } else {
                                 div {
                                     class: "card overflow-hidden",
                                     div {
-                                        class: "grid grid-cols-[1fr_auto_auto] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
+                                        class: "grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 bg-bone-soft border-b border-rule text-[10.5px] text-ink-faint font-mono uppercase tracking-[0.12em]",
                                         span { "When · note" }
                                         span { class: "text-right", "Status" }
                                         span { class: "text-right", "Amount" }
@@ -1437,9 +1767,21 @@ struct AccPoint {
 }
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
+struct CarryForwardSeed {
+    amount_cents: i64,
+    from_date: String,
+    to_date: String,
+    #[serde(default)]
+    note: Option<String>,
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq)]
 struct AccBody {
+    #[allow(dead_code)]
     bucket: String,
     currency: String,
+    #[serde(default)]
+    carry_forward: Option<CarryForwardSeed>,
     series: Vec<AccPoint>,
 }
 
@@ -1466,10 +1808,10 @@ fn fmt_period_label(p: &str, cadence: &str) -> String {
 }
 
 #[component]
-fn VenturePoolPanel(slug: String) -> Element {
+fn AuditLogPanel(slug: String) -> Element {
     // None means "let server pick the current period". A user choice flips
     // it to Some("2026-04") etc. Currency comes from the summary, not props,
-    // so the bar/table use the same currency the gateway computed against.
+    // so the table uses the same currency the gateway computed against.
     let mut selected_period = use_signal::<Option<String>>(|| None);
 
     let slug_for_periods = slug.clone();
@@ -1488,23 +1830,23 @@ fn VenturePoolPanel(slug: String) -> Element {
     rsx! {
         section {
             class: "px-6 lg:px-12 pb-12 max-w-[1140px] rise",
-            style: "animation-delay: 0.18s",
+            style: "animation-delay: 0.28s",
             div {
                 class: "card p-6",
                 {match pool() {
                     None => rsx! {
-                        p { class: "eyebrow mb-3", "VENTURE POOL" }
-                        p { class: "text-[14px] text-ink-soft", "Loading collection…" }
+                        p { class: "eyebrow mb-3", "AUDIT LOG" }
+                        p { class: "text-[14px] text-ink-soft", "Reading the ledger…" }
                     },
                     Some(Err(e)) => {
                         let msg = e.to_string();
                         rsx! {
-                            p { class: "eyebrow mb-3", "VENTURE POOL" }
+                            p { class: "eyebrow mb-3", "AUDIT LOG" }
                             p { class: "text-[13px] text-negative", "{msg}" }
                         }
                     }
                     Some(Ok((summary, contribs))) => rsx! {
-                        PoolHeader {
+                        AuditLogHeader {
                             summary: summary.clone(),
                             periods: periods(),
                             selected: selected_period(),
@@ -1516,8 +1858,6 @@ fn VenturePoolPanel(slug: String) -> Element {
                                 }
                             },
                         }
-                        PoolBar { summary: summary.clone() }
-                        PoolFacts { summary: summary.clone() }
                         PoolTable {
                             currency: summary.currency.clone(),
                             rows: contribs,
@@ -1530,18 +1870,13 @@ fn VenturePoolPanel(slug: String) -> Element {
 }
 
 #[component]
-fn PoolHeader(
+fn AuditLogHeader(
     summary: PoolSummary,
     periods: Option<Result<PeriodsBody, ApiError>>,
     selected: Option<String>,
     on_pick: EventHandler<String>,
 ) -> Element {
     let label = fmt_period_label(&summary.period, &summary.cadence);
-    let cadence_word = match summary.cadence.as_str() {
-        "weekly" => "this week",
-        "yearly" => "this year",
-        _ => "this month",
-    };
     let dropdown_value = selected.clone().unwrap_or_default();
     let options: Vec<String> = match &periods {
         Some(Ok(b)) => b.periods.clone(),
@@ -1551,10 +1886,10 @@ fn PoolHeader(
         div {
             class: "flex flex-wrap items-end justify-between gap-4 mb-5",
             div {
-                p { class: "eyebrow mb-1", "VENTURE POOL · {label}" }
+                p { class: "eyebrow mb-1", "AUDIT LOG · {label}" }
                 p {
                     class: "text-[13px] text-ink-soft",
-                    "Everything every member has paid in for {cadence_word}."
+                    "Every payment recorded into this period — append-only, period-locked once the cycle closes."
                 }
             }
             div {
@@ -1623,20 +1958,157 @@ fn PoolBar(summary: PoolSummary) -> Element {
     }
 }
 
+// ─── Holding summary — top-of-Overview balance sheet headline ─────────────
+
 #[component]
-fn PoolFacts(summary: PoolSummary) -> Element {
-    let settled_label = if summary.dues_per_member_cents > 0 {
-        format!("{} of {} settled", summary.settled_count, summary.member_count)
-    } else {
-        format!("{} of {} contributing", summary.settled_count, summary.member_count)
+fn HoldingSummary(slug: String, currency: String, is_admin: bool) -> Element {
+    // Two parallel fetches: pool gives this-period progress + member counts;
+    // accumulation gives lifetime cumulative (last point of the series).
+    let slug_for_pool = slug.clone();
+    let pool = use_resource(move || {
+        let s = slug_for_pool.clone();
+        async move { fetch_pool(s, None).await }
+    });
+
+    let slug_for_acc = slug.clone();
+    let acc = use_resource(move || {
+        let s = slug_for_acc.clone();
+        async move { fetch_accumulation(s, "auto".to_string()).await }
+    });
+
+    // Lifetime cents: prefer the last series point (already includes the
+    // carry-forward seed at offset). If the series is empty but a seed exists,
+    // the lifetime IS the seed.
+    let acc_snapshot = acc();
+    let lifetime_cents: Option<i64> = match &acc_snapshot {
+        Some(Ok(body)) => body
+            .series
+            .last()
+            .map(|p| p.cumulative_cents)
+            .or_else(|| body.carry_forward.as_ref().map(|c| c.amount_cents)),
+        _ => None,
     };
+    let lifetime_label = match lifetime_cents {
+        Some(c) => fmt_money(c, &currency),
+        None => "—".to_string(),
+    };
+    let carry_forward: Option<CarryForwardSeed> = match &acc_snapshot {
+        Some(Ok(body)) => body.carry_forward.clone(),
+        _ => None,
+    };
+
     rsx! {
-        div {
-            class: "mt-4 grid grid-cols-2 sm:grid-cols-4 gap-4 text-[12.5px]",
-            PoolFact { label: "Target",     value: fmt_money(summary.target_cents,    &summary.currency) }
-            PoolFact { label: "Collected",  value: fmt_money(summary.paid_cents,      &summary.currency) }
-            PoolFact { label: "Remaining",  value: fmt_money(summary.remaining_cents, &summary.currency) }
-            PoolFact { label: "Members",    value: settled_label }
+        section {
+            class: "px-6 lg:px-12 pt-2 pb-10 max-w-[1140px] rise",
+            style: "animation-delay: 0.06s",
+
+            div {
+                class: "card p-6 lg:p-8",
+
+                // Top eyebrow + admin escape hatch.
+                div { class: "flex items-baseline justify-between mb-6 flex-wrap gap-3",
+                    p { class: "eyebrow", "HOLDING · BALANCE SHEET" }
+                    if is_admin {
+                        a {
+                            href: "/ventures/{slug}/manage",
+                            class: "text-[11.5px] text-ink-faint hover:text-evergreen font-mono tracking-[0.1em] uppercase border-b border-transparent hover:border-evergreen/50 transition-colors",
+                            "Member roster →"
+                        }
+                    }
+                }
+
+                // Main grid: lifetime (left, dominant) + this-period progress (right).
+                div { class: "grid grid-cols-1 lg:grid-cols-12 gap-8 items-end",
+
+                    // Lifetime collected — the headline number.
+                    div { class: "lg:col-span-5",
+                        p { class: "text-[11px] uppercase tracking-[0.16em] text-ink-faint font-mono", "Total collected · lifetime" }
+                        p {
+                            class: "mt-3 font-display text-[clamp(2.5rem,5vw,3.75rem)] font-light leading-[1.0] text-ink tnum tracking-[-0.015em]",
+                            "{lifetime_label}"
+                        }
+                        p { class: "mt-3 text-[12.5px] text-ink-soft",
+                            "Sum of every verified payment since the venture opened."
+                        }
+                        if let Some(cf) = carry_forward.as_ref() {
+                            div {
+                                class: "mt-4 rounded-md border border-rule-soft bg-bone-soft/60 px-4 py-3",
+                                p {
+                                    class: "text-[10.5px] uppercase tracking-[0.12em] text-ink-faint font-mono",
+                                    "INCLUDES CARRY-FORWARD SEED"
+                                }
+                                p {
+                                    class: "mt-1.5 font-display text-[18px] text-ink tnum",
+                                    "{fmt_money(cf.amount_cents, &currency)}"
+                                }
+                                p {
+                                    class: "mt-1 text-[12px] text-ink-soft font-mono tnum",
+                                    "Accumulated {cf.from_date} → {cf.to_date}"
+                                }
+                                if let Some(note) = cf.note.as_ref().filter(|n| !n.is_empty()) {
+                                    p {
+                                        class: "mt-1.5 text-[12px] text-ink-soft italic leading-relaxed",
+                                        "“{note}”"
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    // Right: this-period bar + key facts.
+                    div { class: "lg:col-span-7",
+                        {match pool() {
+                            None => rsx! {
+                                div {
+                                    class: "well p-5 text-[13px] text-ink-soft",
+                                    "Reading current period…"
+                                }
+                            },
+                            Some(Err(e)) => {
+                                let msg = e.to_string();
+                                rsx! {
+                                    div {
+                                        class: "well p-5 text-[13px] text-negative font-mono",
+                                        "{msg}"
+                                    }
+                                }
+                            }
+                            Some(Ok((summary, _))) => {
+                                let label = fmt_period_label(&summary.period, &summary.cadence);
+                                let outstanding = summary.member_count.saturating_sub(summary.settled_count);
+                                rsx! {
+                                    div { class: "well p-5",
+                                        div { class: "mb-4 flex items-baseline justify-between",
+                                            p { class: "eyebrow", "THIS PERIOD · {label}" }
+                                            p {
+                                                class: "text-[11px] text-ink-faint font-mono",
+                                                "Period locks at cycle close"
+                                            }
+                                        }
+                                        PoolBar { summary: summary.clone() }
+
+                                        div {
+                                            class: "mt-5 grid grid-cols-3 gap-3 text-[12.5px]",
+                                            PoolFact {
+                                                label: "Members",
+                                                value: format!("{}", summary.member_count),
+                                            }
+                                            PoolFact {
+                                                label: "Settled",
+                                                value: format!("{} of {}", summary.settled_count, summary.member_count),
+                                            }
+                                            PoolFact {
+                                                label: "Outstanding",
+                                                value: format!("{}", outstanding),
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }}
+                    }
+                }
+            }
         }
     }
 }
@@ -1774,18 +2246,52 @@ fn AccumulationChart(slug: String, currency: String) -> Element {
                         let msg = e.to_string();
                         rsx! { p { class: "text-[13px] text-negative", "{msg}" } }
                     }
-                    Some(Ok(body)) if body.series.is_empty() => rsx! {
-                        div {
-                            class: "py-12 text-center text-[13px] text-ink-soft border border-rule-soft rounded-md bg-bone-soft/40",
-                            "No payments recorded yet — the chart will appear once members start contributing."
+                    Some(Ok(body)) if body.series.is_empty() => {
+                        let cf = body.carry_forward.clone();
+                        let curr = body.currency.clone();
+                        rsx! {
+                            div {
+                                class: "py-12 text-center text-[13px] text-ink-soft border border-rule-soft rounded-md bg-bone-soft/40",
+                                if let Some(c) = cf {
+                                    p {
+                                        "Starting balance from off-platform: "
+                                        span { class: "font-mono text-ink", "{fmt_money(c.amount_cents, &curr)}" }
+                                        " (accumulated {c.from_date} → {c.to_date})."
+                                    }
+                                    p { class: "mt-2",
+                                        "The chart will fill in once members start contributing on Sharam."
+                                    }
+                                } else {
+                                    "No payments recorded yet — the chart will appear once members start contributing."
+                                }
+                            }
                         }
-                    },
-                    Some(Ok(_)) => rsx! {
-                        div {
-                            id: "{chart_id_for_div}",
-                            // Width matches the card's content area at lg
-                            // breakpoint; height keeps the line readable.
-                            style: "width: 100%; height: 320px;",
+                    }
+                    Some(Ok(body)) => {
+                        let cf_caption = body.carry_forward.as_ref().map(|c| {
+                            (
+                                c.amount_cents,
+                                c.from_date.clone(),
+                                c.to_date.clone(),
+                                body.currency.clone(),
+                            )
+                        });
+                        rsx! {
+                            div {
+                                id: "{chart_id_for_div}",
+                                // Width matches the card's content area at lg
+                                // breakpoint; height keeps the line readable.
+                                style: "width: 100%; height: 320px;",
+                            }
+                            if let Some((amt, from, to, curr)) = cf_caption {
+                                p {
+                                    class: "mt-3 text-[12px] text-ink-soft text-center font-mono",
+                                    span { class: "inline-block w-3 h-px bg-amber align-middle mr-2" }
+                                    "Dashed line marks carry-forward seed of "
+                                    span { class: "text-ink", "{fmt_money(amt, &curr)}" }
+                                    " accumulated {from} → {to}. Contributions stack above."
+                                }
+                            }
                         }
                     }
                 }}
@@ -1797,7 +2303,10 @@ fn AccumulationChart(slug: String, currency: String) -> Element {
 fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &str) {
     use charming::{
         component::{Axis, Grid},
-        element::{AreaStyle, AxisType, Color, ColorStop, ItemStyle, LineStyle, Tooltip, Trigger},
+        element::{
+            AreaStyle, AxisType, Color, ColorStop, ItemStyle, LineStyle, LineStyleType, Tooltip,
+            Trigger,
+        },
         series::Line,
         Chart, WasmRenderer,
     };
@@ -1815,7 +2324,12 @@ fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &
     // in the tooltip; axis shows naked numbers.
     let cumulative: Vec<i64> = slice.iter().map(|p| p.cumulative_cents / 100).collect();
 
-    let chart = Chart::new()
+    // Carry-forward seed in major units. Drawn as a dashed flat reference
+    // line so the user can see "everything below the dash was already in
+    // the kitty before Sharam; everything above is post-platform flow".
+    let seed_major: Option<i64> = body.carry_forward.as_ref().map(|c| c.amount_cents / 100);
+
+    let mut chart = Chart::new()
         .grid(
             Grid::new()
                 .left("3%")
@@ -1828,7 +2342,7 @@ fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &
             Axis::new()
                 .type_(AxisType::Category)
                 .boundary_gap(false)
-                .data(labels),
+                .data(labels.clone()),
         )
         .y_axis(
             Axis::new()
@@ -1837,6 +2351,7 @@ fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &
         )
         .series(
             Line::new()
+                .name("Cumulative")
                 .smooth(0.3)
                 .show_symbol(false)
                 .line_style(LineStyle::new().width(2.0).color("#1f4d3d"))
@@ -1853,6 +2368,23 @@ fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &
                 }))
                 .data(cumulative),
         );
+
+    if let Some(seed) = seed_major {
+        let flat: Vec<i64> = vec![seed; labels.len()];
+        chart = chart.series(
+            Line::new()
+                .name("Carry-forward seed")
+                .show_symbol(false)
+                .line_style(
+                    LineStyle::new()
+                        .width(1.5)
+                        .color("#b78a3c")
+                        .type_(LineStyleType::Dashed),
+                )
+                .item_style(ItemStyle::new().color("#b78a3c"))
+                .data(flat),
+        );
+    }
 
     let renderer = WasmRenderer::new(960, 320);
     if let Err(e) = renderer.render(id, &chart) {

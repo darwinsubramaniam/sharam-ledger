@@ -5,8 +5,8 @@ mod state;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use anyhow::Context;
-use auth::GoogleVerifier;
+use anyhow::{Context, anyhow};
+use auth::{GoogleVerifier, SessionSigner};
 use axum::Router;
 use http::{HeaderValue, Method, header};
 use ledger::Ledger;
@@ -30,6 +30,10 @@ async fn main() -> anyhow::Result<()> {
         .apply_control_schema()
         .await
         .context("applying control schema")?;
+    ledger
+        .migrate_all_tenants()
+        .await
+        .context("migrating tenant schemas")?;
 
     let app = build_app(&cfg, ledger)?;
 
@@ -61,8 +65,17 @@ fn build_app(cfg: &AppConfig, ledger: Ledger) -> anyhow::Result<Router> {
 
     let mailer = Mailer::new(&cfg.smtp).context("building smtp mailer")?;
 
+    let secret = cfg.gateway.session_secret.as_bytes();
+    if secret.len() < 32 {
+        return Err(anyhow!(
+            "gateway.session_secret must be at least 32 bytes (got {})",
+            secret.len()
+        ));
+    }
+
     let state = AppState {
         google: Arc::new(GoogleVerifier::new(&cfg.google.client_id)),
+        sessions: SessionSigner::new(secret),
         ledger,
         mailer,
     };
@@ -76,6 +89,7 @@ fn build_app(cfg: &AppConfig, ledger: Ledger) -> anyhow::Result<Router> {
         .merge(routes::invites::router())
         .merge(routes::members::router())
         .merge(routes::contributions::router())
+        .merge(routes::carry_forward::router())
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http());
