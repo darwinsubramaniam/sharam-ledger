@@ -17,6 +17,8 @@ DEFINE FIELD OVERWRITE cadence           ON settings TYPE string
     DEFAULT "monthly"
     ASSERT $value INSIDE ["weekly", "monthly", "yearly"];
 DEFINE FIELD OVERWRITE dues_amount_cents ON settings TYPE int DEFAULT 0 ASSERT $value >= 0;
+DEFINE FIELD OVERWRITE purpose           ON settings TYPE option<string>
+    ASSERT $value = NONE OR string::len($value) <= 600;
 DEFINE FIELD OVERWRITE created_at        ON settings TYPE datetime DEFAULT time::now() READONLY;
 DEFINE FIELD OVERWRITE updated_at        ON settings TYPE datetime DEFAULT time::now() VALUE time::now();
 

@@ -93,6 +93,7 @@ pub struct TenantSettings {
     pub display_name: String,
     pub cadence: String,
     pub dues_amount_cents: i64,
+    pub purpose: Option<String>,
 }
 
 /// Stored row for `contribution` (per-tenant). `cadence` is snapshotted at
@@ -187,6 +188,7 @@ pub struct UpdateSettings {
     pub currency: Option<String>,
     pub cadence: Option<String>,
     pub dues_amount_cents: Option<i64>,
+    pub purpose: Option<String>,
 }
 
 /// Stored row for `carry_forward:current` (per-tenant). Singleton seeded

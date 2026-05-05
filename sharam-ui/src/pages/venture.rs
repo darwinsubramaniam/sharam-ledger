@@ -14,7 +14,6 @@ use crate::pages::sidenav::Sidenav;
 //
 // TODO(api): GET /api/ventures/:slug/members  → Vec<MemberRow>
 // TODO(api): GET /api/ventures/:slug/rhythm   → last N PeriodCells + totals
-// TODO(api): add `purpose` field to settings or tenant_directory.
 
 #[derive(Deserialize, Debug, Clone, PartialEq)]
 struct VentureDetail {
@@ -109,6 +108,8 @@ async fn fetch_venture(slug: String) -> Result<VentureDetail, ApiError> {
         cadence: String,
         dues_amount_cents: i64,
         current_period: String,
+        #[serde(default)]
+        purpose: Option<String>,
     }
     #[derive(Deserialize)]
     struct SettingsBody {
@@ -149,13 +150,7 @@ async fn fetch_venture(slug: String) -> Result<VentureDetail, ApiError> {
         slug: row.slug,
         display_name: s.display_name,
         role: row.role,
-        purpose: Some(
-            "Pool patient capital each month from members who trust each other, \
-            and deploy it as growth loans to the small food vendors of George Town \
-            who sit outside the reach of conventional credit. Returns are slow, \
-            shared, and visible to every member of this ledger."
-                .into(),
-        ),
+        purpose: s.purpose,
         cadence: s.cadence,
         currency: s.currency,
         timezone: s.timezone,
@@ -208,6 +203,8 @@ struct UpdateSettingsRequest {
     cadence: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dues_amount_cents: Option<i64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    purpose: Option<String>,
 }
 
 async fn save_settings(slug: &str, req: UpdateSettingsRequest) -> Result<(), ApiError> {
@@ -801,6 +798,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
     let dues_major = use_signal(|| (v.dues_amount_cents / 100).to_string());
     let tz = use_signal(|| v.timezone.clone());
     let cur = use_signal(|| v.currency.clone());
+    let purpose = use_signal(|| v.purpose.clone().unwrap_or_default());
     let mut saving = use_signal(|| false);
     let mut save_error: Signal<Option<String>> = use_signal(|| None);
     let mut save_flash: Signal<Option<String>> = use_signal(|| None);
@@ -856,6 +854,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
                             let dues_major = dues_major;
                             let tz = tz;
                             let cur = cur;
+                            let purpose = purpose;
                             move |_| {
                                 let slug = slug.clone();
                                 async move {
@@ -873,6 +872,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
                                         currency: Some(cur()),
                                         cadence: Some(cad()),
                                         dues_amount_cents: Some(dues_cents),
+                                        purpose: Some(purpose()),
                                     };
                                     match save_settings(&slug, req).await {
                                         Ok(()) => {
@@ -905,7 +905,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
         }
 
         // Editor: purpose
-        EditPurposeBlock { initial: v.purpose.clone().unwrap_or_default() }
+        EditPurposeBlock { text: purpose }
 
         // Editor: cadence + dues + tz + currency
         EditCadenceBlock {
@@ -1116,8 +1116,7 @@ fn PurposeBlock(purpose: Option<String>) -> Element {
 }
 
 #[component]
-fn EditPurposeBlock(initial: String) -> Element {
-    let mut text = use_signal(|| initial.clone());
+fn EditPurposeBlock(mut text: Signal<String>) -> Element {
     let count = text.read().chars().count();
     let count_label = format!("{count} / 600");
     rsx! {

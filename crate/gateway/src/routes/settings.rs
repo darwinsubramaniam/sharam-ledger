@@ -29,6 +29,7 @@ struct SettingsView {
     cadence: String,
     dues_amount_cents: i64,
     current_period: String,
+    purpose: Option<String>,
 }
 
 fn settings_view(s: TenantSettings) -> SettingsView {
@@ -43,6 +44,7 @@ fn settings_view(s: TenantSettings) -> SettingsView {
         cadence: s.cadence,
         dues_amount_cents: s.dues_amount_cents,
         current_period,
+        purpose: s.purpose,
     }
 }
 
@@ -64,6 +66,8 @@ struct PatchSettingsRequest {
     cadence: Option<Cadence>,
     #[serde(default)]
     dues_amount_cents: Option<i64>,
+    #[serde(default)]
+    purpose: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -184,6 +188,14 @@ async fn patch_settings(
             return Err(err(StatusCode::BAD_REQUEST, "display_name cannot be empty"));
         }
     }
+    if let Some(p) = payload.purpose.as_ref() {
+        if p.chars().count() > 600 {
+            return Err(err(
+                StatusCode::BAD_REQUEST,
+                "purpose must be 600 characters or fewer",
+            ));
+        }
+    }
 
     let patch = UpdateSettings {
         display_name: payload.display_name.map(|s| s.trim().to_string()),
@@ -191,6 +203,7 @@ async fn patch_settings(
         currency: payload.currency,
         cadence: payload.cadence.map(|c| c.as_str().to_string()),
         dues_amount_cents: payload.dues_amount_cents,
+        purpose: payload.purpose,
     };
 
     let s = state

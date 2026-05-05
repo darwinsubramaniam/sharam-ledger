@@ -824,6 +824,14 @@ impl Ledger {
         if let Some(v) = patch.dues_amount_cents {
             obj.insert("dues_amount_cents".into(), v.into());
         }
+        if let Some(v) = patch.purpose {
+            let trimmed = v.trim();
+            if trimmed.is_empty() {
+                obj.insert("purpose".into(), serde_json::Value::Null);
+            } else {
+                obj.insert("purpose".into(), trimmed.to_string().into());
+            }
+        }
         if obj.is_empty() {
             // Nothing to do — return current state instead of issuing an UPDATE
             // that would be a no-op but still bump `updated_at`.
