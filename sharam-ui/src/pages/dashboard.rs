@@ -137,7 +137,7 @@ fn DashboardContent(
     rsx! {
         // ── Title ──────────────────────────────────────────────────────
         section {
-            class: "px-6 lg:px-12 pt-10 pb-4 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-4 max-w-[1140px] rise",
             p { class: "eyebrow mb-4", "DASHBOARD" }
             h1 {
                 class: "display text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-[1.08] text-ink",
@@ -161,7 +161,7 @@ fn DashboardContent(
             HoldingsAndActivity { venture: v.clone(), detail: detail }
         } else {
             section {
-                class: "px-6 lg:px-12 pb-16 max-w-[1140px] rise",
+                class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[1140px] rise",
                 style: "animation-delay: 0.05s",
                 div {
                     class: "card p-10 text-center",
@@ -220,7 +220,7 @@ fn HoldingsAndActivity(venture: Venture, detail: Option<Result<Settings, ApiErro
     rsx! {
         // ── Holdings ───────────────────────────────────────────────────
         section {
-            class: "px-6 lg:px-12 pb-2 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-2 max-w-[1140px] rise",
             style: "animation-delay: 0.1s",
             div {
                 class: "flex items-baseline justify-between mb-5 gap-4 flex-wrap",
@@ -284,10 +284,10 @@ fn HoldingsAndActivity(venture: Venture, detail: Option<Result<Settings, ApiErro
 
         // ── Activity ───────────────────────────────────────────────────
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
             style: "animation-delay: 0.15s",
             div {
-                class: "flex items-baseline justify-between mb-5",
+                class: "flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4 mb-5",
                 p { class: "eyebrow", "ACTIVITY · LATEST" }
                 p {
                     class: "text-[12px] text-ink-faint font-mono tracking-[0.06em] tnum",
@@ -404,7 +404,7 @@ fn ActivityRow(idx: usize, entry: ActivityEntry) -> Element {
 fn LoadingSection() -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
             p { class: "eyebrow mb-4", "DASHBOARD" }
             h1 {
                 class: "display text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-[1.08] text-ink",
@@ -422,7 +422,7 @@ fn LoadingSection() -> Element {
 fn SignInSection() -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
             div {
                 class: "card p-8",
                 p { class: "eyebrow mb-2", "SESSION EXPIRED" }
@@ -445,7 +445,7 @@ fn SignInSection() -> Element {
 fn ErrorSection(message: String) -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px] rise",
             div {
                 class: "card p-8",
                 p { class: "eyebrow !text-negative mb-2", "ERROR" }
@@ -459,7 +459,7 @@ fn ErrorSection(message: String) -> Element {
 fn EmptySection() -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-6 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-6 max-w-[1140px] rise",
             p { class: "eyebrow mb-4", "DASHBOARD" }
             h1 {
                 class: "display text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-[1.08] text-ink",
@@ -471,7 +471,7 @@ fn EmptySection() -> Element {
             }
         }
         section {
-            class: "px-6 lg:px-12 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[1140px] rise",
             style: "animation-delay: 0.05s",
             div {
                 class: "card p-10 text-center",

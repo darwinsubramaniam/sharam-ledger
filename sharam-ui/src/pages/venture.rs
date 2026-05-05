@@ -548,7 +548,7 @@ pub fn ManagePage(slug: String) -> Element {
 fn LoadingShell(slug: String) -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             p { class: "eyebrow mb-3", "VENTURE · {slug}" }
             div {
                 class: "card p-10 text-center text-ink-soft text-[14px]",
@@ -561,7 +561,7 @@ fn LoadingShell(slug: String) -> Element {
 #[component]
 fn SignInPrompt() -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div {
                 class: "card p-8",
                 p { class: "eyebrow mb-2", "SESSION EXPIRED" }
@@ -583,7 +583,7 @@ fn SignInPrompt() -> Element {
 #[component]
 fn ErrorPanel(message: String) -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div {
                 class: "card p-8",
                 p { class: "eyebrow !text-negative mb-2", "ERROR" }
@@ -615,17 +615,17 @@ fn OverviewBody(v: VentureDetail) -> Element {
     rsx! {
         // ── Breadcrumb strip ─────────────────────────────────────────────
         div {
-            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
             span { class: "text-ink-soft", "ns={v.slug}" }
         }
 
         // ── Hero ────────────────────────────────────────────────────────
         section {
-            class: "px-6 lg:px-12 pt-2 pb-10 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-2 pb-10 max-w-[1140px] rise",
             style: "animation-delay: 0.04s",
 
             div {
-                class: "flex items-start justify-between gap-8 flex-wrap",
+                class: "flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between lg:gap-8",
 
                 div { class: "min-w-0 flex-1",
                     p { class: "eyebrow mb-4",
@@ -633,11 +633,11 @@ fn OverviewBody(v: VentureDetail) -> Element {
                         span { class: "text-evergreen", "{v.slug}" }
                     }
                     h1 {
-                        class: "display text-[clamp(2.25rem,5vw,3.5rem)] font-light leading-[1.04] text-ink",
+                        class: "display text-[clamp(2rem,5vw,3.5rem)] font-light leading-[1.04] text-ink break-words",
                         "{v.display_name}"
                     }
                     div {
-                        class: "mt-5 flex items-center gap-3 flex-wrap",
+                        class: "mt-5 flex items-center gap-2 sm:gap-3 flex-wrap",
                         span { class: "{pill_cls}", "{v.role}" }
                         span { class: "{period_status_pill}", "Period {v.current_period} · {v.period_status}" }
                         span { class: "text-[12.5px] text-ink-faint font-mono tracking-[0.06em]",
@@ -647,10 +647,12 @@ fn OverviewBody(v: VentureDetail) -> Element {
                 }
 
                 // Primary action — open the Contribute drawer.
-                div { class: "shrink-0 flex items-center gap-3 flex-wrap",
+                // On mobile/tablet we stack action buttons full-width below the
+                // heading; on lg+ they sit to the right.
+                div { class: "flex items-stretch sm:items-center gap-2 sm:gap-3 flex-wrap lg:shrink-0",
                     button {
                         r#type: "button",
-                        class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep text-paper text-[14px] font-medium px-5 py-3 rounded-md transition-colors shadow-[0_8px_24px_-12px_rgba(31,77,61,0.45)]",
+                        class: "flex-1 sm:flex-none inline-flex items-center justify-center gap-2 bg-evergreen hover:bg-evergreen-deep text-paper text-[14px] font-medium px-5 py-3 rounded-md transition-colors shadow-[0_8px_24px_-12px_rgba(31,77,61,0.45)]",
                         onclick: move |_| drawer_open.set(true),
                         span { class: "text-[16px] leading-none", "+" }
                         "Contribute"
@@ -658,7 +660,7 @@ fn OverviewBody(v: VentureDetail) -> Element {
                     if is_admin {
                         a {
                             href: "/ventures/{v.slug}/manage",
-                            class: "inline-flex items-center gap-2 border border-rule bg-paper hover:bg-bone-soft text-ink-soft hover:text-ink text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
+                            class: "flex-1 sm:flex-none inline-flex items-center justify-center gap-2 border border-rule bg-paper hover:bg-bone-soft text-ink-soft hover:text-ink text-[13px] font-medium px-4 py-2.5 rounded-md transition-colors",
                             span { class: "text-evergreen", "⚙" }
                             "Manage"
                         }
@@ -682,11 +684,11 @@ fn OverviewBody(v: VentureDetail) -> Element {
 
         // ── Rhythm strip — last six periods ─────────────────────────────
         section {
-            class: "px-6 lg:px-12 pb-12 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-12 max-w-[1140px] rise",
             style: "animation-delay: 0.20s",
 
             div {
-                class: "flex items-baseline justify-between mb-5",
+                class: "flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4 mb-5",
                 p { class: "eyebrow", "RHYTHM · LAST SIX PERIODS" }
                 p { class: "text-[12px] text-ink-faint font-mono",
                     "{cadence_word}"
@@ -694,7 +696,7 @@ fn OverviewBody(v: VentureDetail) -> Element {
             }
 
             div {
-                class: "grid grid-cols-6 gap-2",
+                class: "grid grid-cols-3 sm:grid-cols-6 gap-2",
                 for cell in v.last_periods.iter() {
                     div {
                         class: "flex flex-col gap-2",
@@ -742,7 +744,7 @@ fn ContributeBody(v: VentureDetail) -> Element {
     rsx! {
         // Breadcrumb
         div {
-            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
             a { href: "/ventures/{v.slug}", class: "hover:text-evergreen transition-colors", "ns={v.slug}" }
             span { "›" }
             span { class: "text-ink-soft", "Contribute" }
@@ -750,7 +752,7 @@ fn ContributeBody(v: VentureDetail) -> Element {
 
         // Hero — quiet, focused on the act of paying.
         section {
-            class: "px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
             style: "animation-delay: 0.04s",
 
             p { class: "eyebrow mb-3",
@@ -774,7 +776,7 @@ fn ContributeBody(v: VentureDetail) -> Element {
 
         // Footer link — back to overview to see collective progress.
         section {
-            class: "px-6 lg:px-12 pb-16 max-w-[1140px]",
+            class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[1140px]",
             div { class: "border-t border-rule pt-6 flex flex-wrap items-center justify-between gap-4",
                 p { class: "text-[12.5px] text-ink-faint font-mono",
                     "Looking for the venture-wide collected total?"
@@ -811,7 +813,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
     rsx! {
         // Breadcrumb
         div {
-            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
             a { href: "/ventures/{v.slug}", class: "hover:text-evergreen transition-colors", "ns={v.slug}" }
             span { "›" }
             span { class: "text-ink-soft", "Manage" }
@@ -819,7 +821,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
 
         // Hero — admin tone.
         section {
-            class: "px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
             style: "animation-delay: 0.04s",
 
             div { class: "flex flex-wrap items-end justify-between gap-6",
@@ -918,21 +920,21 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
 
         // Members table — full
         section {
-            class: "px-6 lg:px-12 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[1140px] rise",
             style: "animation-delay: 0.20s",
 
             div {
-                class: "flex items-baseline justify-between mb-5",
+                class: "flex flex-col gap-3 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6 mb-5",
                 div {
                     p { class: "eyebrow", "MEMBERS · {v.member_count}" }
-                    h2 { class: "mt-2 font-display text-[24px] font-semibold text-ink leading-tight",
+                    h2 { class: "mt-2 font-display text-[22px] sm:text-[24px] font-semibold text-ink leading-tight",
                         "Who shows up to this ledger"
                     }
                 }
                 if v.role == "owner" {
                     a {
                         href: "/ventures/{v.slug}/invites",
-                        class: "inline-flex items-center gap-2 text-[13px] text-evergreen hover:text-evergreen-deep border-b border-evergreen/40 hover:border-evergreen transition-colors",
+                        class: "self-start sm:self-auto inline-flex items-center gap-2 text-[13px] text-evergreen hover:text-evergreen-deep border-b border-evergreen/40 hover:border-evergreen transition-colors",
                         "+ Invite member"
                     }
                 }
@@ -941,7 +943,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
             div {
                 class: "card overflow-hidden",
                 div {
-                    class: "grid grid-cols-[2.4fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
+                    class: "hidden sm:grid grid-cols-[2.4fr_1fr_1fr_1fr] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
                     span { "Member" }
                     span { "Role" }
                     span { "Joined" }
@@ -982,7 +984,7 @@ fn ManageBody(v: VentureDetail, on_saved: EventHandler<()>) -> Element {
 fn NotAdminPanel(slug: String) -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+            class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div { class: "card p-8",
                 p { class: "eyebrow !text-amber mb-2", "ADMIN ONLY" }
                 h2 { class: "font-display text-[22px] font-semibold text-ink",
@@ -1084,7 +1086,7 @@ fn PurposeBlock(purpose: Option<String>) -> Element {
     });
     rsx! {
         section {
-            class: "relative px-6 lg:px-12 py-10 max-w-[1140px] border-t border-rule rise",
+            class: "relative px-4 sm:px-6 lg:px-12 py-10 max-w-[1140px] border-t border-rule rise",
             style: "animation-delay: 0.08s",
 
             div { class: "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start",
@@ -1121,7 +1123,7 @@ fn EditPurposeBlock(mut text: Signal<String>) -> Element {
     let count_label = format!("{count} / 600");
     rsx! {
         section {
-            class: "px-6 lg:px-12 py-10 max-w-[1140px] border-t border-rule",
+            class: "px-4 sm:px-6 lg:px-12 py-10 max-w-[1140px] border-t border-rule",
 
             div { class: "grid grid-cols-1 lg:grid-cols-12 gap-8 items-start",
                 div { class: "lg:col-span-3",
@@ -1159,7 +1161,7 @@ fn EditCadenceBlock(
 ) -> Element {
     rsx! {
         section {
-            class: "px-6 lg:px-12 pb-12 max-w-[1140px] grid grid-cols-1 lg:grid-cols-12 gap-6",
+            class: "px-4 sm:px-6 lg:px-12 pb-12 max-w-[1140px] grid grid-cols-1 lg:grid-cols-12 gap-6",
 
             div { class: "lg:col-span-12 card p-6",
                 p { class: "eyebrow mb-5", "EDIT VENTURE" }
@@ -1361,7 +1363,7 @@ fn MemberRowView(idx: usize, member: MemberRow) -> Element {
 
     rsx! {
         div {
-            class: "grid grid-cols-[2.4fr_1fr_1fr_1fr] gap-4 items-center px-5 py-3.5 border-b border-rule-soft last:border-b-0 {stripe} hover:bg-evergreen-soft/40 transition-colors",
+            class: "flex flex-col gap-2 sm:gap-4 sm:grid sm:grid-cols-[2.4fr_1fr_1fr_1fr] sm:items-center px-4 sm:px-5 py-3.5 border-b border-rule-soft last:border-b-0 {stripe} hover:bg-evergreen-soft/40 transition-colors",
             // Member identity
             div { class: "flex items-center gap-3 min-w-0",
                 span {
@@ -1373,16 +1375,17 @@ fn MemberRowView(idx: usize, member: MemberRow) -> Element {
                     p { class: "text-[12px] text-ink-faint font-mono truncate", "{member.email}" }
                 }
             }
-            div {
+            // Mobile: meta row (role · joined · status) sits below identity.
+            // Desktop: each cell goes in its own grid column.
+            div { class: "flex items-center gap-2 flex-wrap sm:contents",
                 span { class: "{role_cls}", "{member.role}" }
-            }
-            div {
-                p { class: "text-[12.5px] text-ink-soft font-mono tnum",
+                p { class: "text-[12px] text-ink-soft font-mono tnum sm:text-[12.5px]",
                     "{member.joined_at.get(..10).unwrap_or(&member.joined_at)}"
                 }
-            }
-            div { class: "text-right",
-                span { class: "{status_cls}", "{member.last_period_status}" }
+                span {
+                    class: "{status_cls} sm:ml-auto",
+                    "{member.last_period_status}"
+                }
             }
         }
     }
@@ -1440,7 +1443,7 @@ fn MyPeriodPanel(
     let section_class = if compact {
         "rise"
     } else {
-        "px-6 lg:px-12 pb-12 max-w-[1140px] rise"
+        "px-4 sm:px-6 lg:px-12 pb-12 max-w-[1140px] rise"
     };
 
     rsx! {
@@ -1786,15 +1789,15 @@ fn MyPeriodPanel(
                             }
                         } else {
                             div {
-                                class: "flex items-baseline justify-between mb-5 gap-6",
+                                class: "flex flex-col gap-2 sm:flex-row sm:items-baseline sm:justify-between sm:gap-6 mb-5",
                                 div {
                                     p { class: "eyebrow", "MY PAYMENTS · PERIOD {period}" }
-                                    h2 { class: "mt-2 font-display text-[24px] font-semibold text-ink leading-tight",
+                                    h2 { class: "mt-2 font-display text-[22px] sm:text-[24px] font-semibold text-ink leading-tight",
                                         "What you owe this cycle"
                                     }
                                 }
                                 p {
-                                    class: "text-[12px] text-ink-faint font-mono shrink-0",
+                                    class: "text-[12px] text-ink-faint font-mono sm:shrink-0 sm:text-right",
                                     "Cap is one cycle of dues. Partial payments add up."
                                 }
                             }
@@ -1834,7 +1837,7 @@ fn MyPeriodPanel(
                                 div {
                                     class: "card overflow-hidden",
                                     div {
-                                        class: "grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 bg-bone-soft border-b border-rule text-[10.5px] text-ink-faint font-mono uppercase tracking-[0.12em]",
+                                        class: "hidden sm:grid grid-cols-[1fr_auto_auto] gap-3 px-4 py-2.5 bg-bone-soft border-b border-rule text-[10.5px] text-ink-faint font-mono uppercase tracking-[0.12em]",
                                         span { "When · note" }
                                         span { class: "text-right", "Status" }
                                         span { class: "text-right", "Amount" }
@@ -1899,9 +1902,16 @@ fn ContributionRowView(
     let mut proof_loading = use_signal(|| false);
     rsx! {
         div {
-            class: "grid grid-cols-[1fr_auto_auto] gap-4 items-center px-5 py-3 border-b border-rule-soft last:border-b-0 {stripe}",
+            class: "flex flex-col gap-2 sm:gap-4 sm:grid sm:grid-cols-[1fr_auto_auto] sm:items-center px-4 sm:px-5 py-3 border-b border-rule-soft last:border-b-0 {stripe}",
             div {
-                p { class: "text-[13px] text-ink font-mono tnum", "{when} UTC" }
+                // On mobile, lead with the amount + status pill so the row's
+                // primary signal is readable at a glance; the desktop layout
+                // keeps the conventional "when on the left, money on the right".
+                div { class: "flex sm:hidden items-baseline justify-between gap-3 mb-0.5",
+                    span { class: "font-display text-[16px] text-ink tnum", "{amount}" }
+                    span { class: "{status_cls}", "{row.status}" }
+                }
+                p { class: "text-[13px] text-ink-soft sm:text-ink font-mono tnum", "{when} UTC" }
                 if !note.is_empty() {
                     p { class: "text-[12.5px] text-ink-soft mt-0.5", "{note}" }
                 }
@@ -1943,10 +1953,10 @@ fn ContributionRowView(
                     }
                 }
             }
-            div { class: "text-right",
+            div { class: "hidden sm:block text-right",
                 span { class: "{status_cls}", "{row.status}" }
             }
-            div { class: "text-right font-display text-[15px] text-ink tnum", "{amount}" }
+            div { class: "hidden sm:block text-right font-display text-[15px] text-ink tnum", "{amount}" }
         }
     }
 }
@@ -2099,7 +2109,7 @@ fn AuditLogPanel(slug: String) -> Element {
 
     rsx! {
         section {
-            class: "px-6 lg:px-12 pb-12 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-12 max-w-[1140px] rise",
             style: "animation-delay: 0.28s",
             div {
                 class: "card p-6",
@@ -2269,7 +2279,7 @@ fn HoldingSummary(slug: String, currency: String, is_admin: bool) -> Element {
 
     rsx! {
         section {
-            class: "px-6 lg:px-12 pt-2 pb-10 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-2 pb-10 max-w-[1140px] rise",
             style: "animation-delay: 0.06s",
 
             div {
@@ -2348,7 +2358,7 @@ fn HoldingSummary(slug: String, currency: String, is_admin: bool) -> Element {
                                 let outstanding = summary.member_count.saturating_sub(summary.settled_count);
                                 rsx! {
                                     div { class: "well p-5",
-                                        div { class: "mb-4 flex items-baseline justify-between",
+                                        div { class: "mb-4 flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-4",
                                             p { class: "eyebrow", "THIS PERIOD · {label}" }
                                             p {
                                                 class: "text-[11px] text-ink-faint font-mono",
@@ -2408,7 +2418,7 @@ fn PoolTable(currency: String, rows: Vec<PoolContribution>) -> Element {
         div {
             class: "mt-6 rounded-md border border-rule-soft overflow-hidden",
             div {
-                class: "grid grid-cols-[2fr_1.4fr_auto_auto] gap-4 px-5 py-2.5 bg-bone-soft text-[10.5px] uppercase tracking-[0.1em] text-ink-faint font-mono",
+                class: "hidden sm:grid grid-cols-[2fr_1.4fr_auto_auto] gap-4 px-5 py-2.5 bg-bone-soft text-[10.5px] uppercase tracking-[0.1em] text-ink-faint font-mono",
                 span { "Member" }
                 span { "Submitted" }
                 span { class: "text-right", "Status" }
@@ -2434,18 +2444,23 @@ fn PoolRow(row: PoolContribution, currency: String, idx: usize) -> Element {
     };
     rsx! {
         div {
-            class: "grid grid-cols-[2fr_1.4fr_auto_auto] gap-4 items-center px-5 py-3 border-t border-rule-soft {stripe}",
+            class: "flex flex-col gap-1.5 sm:gap-4 sm:grid sm:grid-cols-[2fr_1.4fr_auto_auto] sm:items-center px-4 sm:px-5 py-3 border-t border-rule-soft {stripe}",
+            // Mobile-only header line: amount + status, leading the row.
+            div { class: "flex sm:hidden items-baseline justify-between gap-3",
+                span { class: "font-display text-[16px] text-ink tnum", "{amount}" }
+                span { class: "{status_cls}", "{row.status}" }
+            }
             div {
                 p { class: "text-[13px] text-ink truncate", "{row.user_email}" }
                 if !note.is_empty() {
                     p { class: "text-[12px] text-ink-soft mt-0.5 truncate", "{note}" }
                 }
             }
-            div { class: "text-[13px] text-ink-soft font-mono tnum", "{when}" }
-            div { class: "text-right",
+            div { class: "text-[12.5px] sm:text-[13px] text-ink-soft font-mono tnum", "{when}" }
+            div { class: "hidden sm:block text-right",
                 span { class: "{status_cls}", "{row.status}" }
             }
-            div { class: "text-right font-display text-[15px] text-ink tnum", "{amount}" }
+            div { class: "hidden sm:block text-right font-display text-[15px] text-ink tnum", "{amount}" }
         }
     }
 }
@@ -2485,10 +2500,10 @@ fn AccumulationChart(slug: String, currency: String) -> Element {
 
     rsx! {
         section {
-            class: "px-6 lg:px-12 pb-16 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[1140px] rise",
             style: "animation-delay: 0.22s",
-            div { class: "card p-6",
-                div { class: "flex flex-wrap items-end justify-between gap-4 mb-4",
+            div { class: "card p-4 sm:p-6 overflow-hidden",
+                div { class: "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end sm:justify-between sm:gap-4 mb-4",
                     div {
                         p { class: "eyebrow mb-1", "ACCUMULATION" }
                         p {
@@ -2497,7 +2512,7 @@ fn AccumulationChart(slug: String, currency: String) -> Element {
                         }
                     }
                     div {
-                        class: "flex items-center gap-3",
+                        class: "flex items-center gap-2 sm:gap-3 flex-wrap",
                         BucketToggle {
                             value: bucket(),
                             on_pick: move |b: String| bucket.set(b),
@@ -2656,7 +2671,17 @@ fn render_accumulation_chart(id: &str, currency: &str, body: &AccBody, window: &
         );
     }
 
-    let renderer = WasmRenderer::new(960, 320);
+    // Read the container's actual client width so the chart matches its parent.
+    // Falls back to 960 only if the element isn't in the DOM yet (shouldn't
+    // happen because this runs from a use_effect post-mount, but defensive).
+    let width: u32 = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(id))
+        .map(|el| el.client_width().max(0) as u32)
+        .filter(|w| *w > 0)
+        .unwrap_or(960);
+
+    let renderer = WasmRenderer::new(width, 320);
     if let Err(e) = renderer.render(id, &chart) {
         web_sys::console::warn_1(&format!("accumulation chart render: {e:?}").into());
     }

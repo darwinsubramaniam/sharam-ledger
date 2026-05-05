@@ -91,6 +91,7 @@ pub fn Sidenav(active: String, children: Element) -> Element {
     let mut selected_slug: Signal<Option<String>> = use_signal(|| initial);
     let mut ventures_sig: Signal<Option<Vec<Venture>>> = use_signal(|| None);
     let mut error_sig: Signal<Option<ApiError>> = use_signal(|| None);
+    let mut mobile_open = use_signal(|| false);
 
     use_context_provider(|| VentureCtx {
         selected: selected_slug,
@@ -125,58 +126,42 @@ pub fn Sidenav(active: String, children: Element) -> Element {
         }
     });
 
+    let active_for_desktop = active.clone();
+    let active_for_mobile = active.clone();
+
     rsx! {
         div {
             class: "min-h-screen bg-bone text-ink font-body antialiased flex",
 
-            // ── Left rail ───────────────────────────────────────────────
+            // ── Desktop left rail (≥md) ─────────────────────────────────
             aside {
                 class: "hidden md:flex w-[268px] shrink-0 flex-col border-r border-rule bg-paper sticky top-0 h-screen",
+                SidenavBody { active: active_for_desktop, on_pick: move |_| {} }
+            }
 
-                // Brand
-                a {
-                    href: "/",
-                    class: "px-6 py-5 flex items-center gap-3 border-b border-rule hover:bg-bone-soft transition-colors shrink-0",
-                    span {
-                        class: "text-[22px] text-evergreen leading-none",
-                        style: "font-family: var(--font-tamil);",
-                        "ஷ"
-                    }
-                    span {
-                        class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink",
-                        "Sharam"
-                    }
-                }
-
-                // ── Picker ─────────────────────────────────────────────
+            // ── Mobile slide-in drawer (<md) ────────────────────────────
+            if mobile_open() {
                 div {
-                    class: "px-3 pt-4 pb-4 border-b border-rule shrink-0",
-                    SidenavPicker {}
+                    class: "md:hidden nav-drawer-overlay",
+                    onclick: move |_| mobile_open.set(false),
                 }
-
-                // ── Venture-scoped nav (contextual) ────────────────────
-                VentureNav { active: active.clone() }
-
-                // Primary nav
-                nav {
-                    class: "px-3 py-4 flex-1 overflow-y-auto",
-
-                    p { class: "eyebrow px-3 mb-2", "ACCOUNT" }
-                    NavItem { href: "/profile",  label: "Profile",  icon: "◉", active: active == "profile" }
-                    NavItem { href: "/settings", label: "Settings", icon: "⚙", active: active == "settings" }
-                    button {
-                        r#type: "button",
-                        onclick: move |_| sign_out(),
-                        class: "group w-full text-left flex items-center gap-3 px-3 py-2 rounded-md text-[13.5px] text-ink-soft hover:bg-negative-soft hover:text-negative transition-colors",
-                        span { class: "w-5 inline-flex items-center justify-center text-[13px] text-ink-faint group-hover:text-negative", "↩" }
-                        span { "Sign out" }
+                aside {
+                    class: "md:hidden nav-drawer",
+                    // Close affordance — top-right X
+                    div {
+                        class: "absolute top-3 right-3 z-10",
+                        button {
+                            r#type: "button",
+                            onclick: move |_| mobile_open.set(false),
+                            aria_label: "Close menu",
+                            class: "h-10 w-10 inline-flex items-center justify-center rounded-md text-ink-soft hover:bg-bone-soft hover:text-ink transition-colors",
+                            span { class: "text-[18px] leading-none", "✕" }
+                        }
                     }
-                }
-
-                // Footer
-                div {
-                    class: "px-6 py-4 border-t border-rule text-[11px] text-ink-faint font-mono tracking-[0.14em] uppercase shrink-0",
-                    "v0.1.0 · build 0001"
+                    SidenavBody {
+                        active: active_for_mobile,
+                        on_pick: move |_| mobile_open.set(false),
+                    }
                 }
             }
 
@@ -184,36 +169,44 @@ pub fn Sidenav(active: String, children: Element) -> Element {
             main {
                 class: "flex-1 min-w-0",
 
-                // Mobile top bar (sidenav hidden < md)
+                // Mobile top bar (only visible <md). Hamburger → drawer;
+                // brand → home; profile avatar → /profile.
                 div {
-                    class: "md:hidden flex flex-col border-b border-rule bg-paper",
-                    div {
-                        class: "flex items-center justify-between px-4 py-3",
-                        a {
-                            href: "/",
-                            class: "flex items-center gap-2",
-                            span {
-                                class: "text-[20px] text-evergreen leading-none",
-                                style: "font-family: var(--font-tamil);",
-                                "ஷ"
-                            }
-                            span { class: "font-display text-[16px] font-semibold", "Sharam" }
-                        }
-                        nav {
-                            class: "flex items-center gap-3 text-[12.5px]",
-                            a { href: "/dashboard", class: "text-ink-soft hover:text-evergreen", "Dashboard" }
-                            a { href: "/profile", class: "text-ink-soft hover:text-evergreen", "Profile" }
-                            button {
-                                r#type: "button",
-                                onclick: move |_| sign_out(),
-                                class: "text-ink-soft hover:text-negative",
-                                "Sign out"
-                            }
+                    class: "md:hidden sticky top-0 z-30 flex items-center justify-between border-b border-rule bg-paper/95 backdrop-blur px-3 h-14",
+                    button {
+                        r#type: "button",
+                        aria_label: "Open menu",
+                        onclick: move |_| {
+                            let cur = mobile_open();
+                            mobile_open.set(!cur);
+                        },
+                        class: "h-10 w-10 inline-flex items-center justify-center rounded-md text-ink hover:bg-bone-soft transition-colors",
+                        // Three-line hamburger drawn in CSS — no SVG dep
+                        span {
+                            class: "relative inline-block w-[18px] h-[12px]",
+                            span { class: "absolute inset-x-0 top-0 h-[1.5px] bg-current rounded" }
+                            span { class: "absolute inset-x-0 top-1/2 -translate-y-1/2 h-[1.5px] bg-current rounded" }
+                            span { class: "absolute inset-x-0 bottom-0 h-[1.5px] bg-current rounded" }
                         }
                     }
-                    div {
-                        class: "px-3 pb-3 border-t border-rule-soft pt-3",
-                        SidenavPicker {}
+                    a {
+                        href: "/dashboard",
+                        class: "flex items-center gap-2 min-w-0",
+                        span {
+                            class: "text-[20px] text-evergreen leading-none",
+                            style: "font-family: var(--font-tamil);",
+                            "ஷ"
+                        }
+                        span {
+                            class: "font-display text-[16px] font-semibold tracking-[-0.01em] truncate",
+                            "Sharam"
+                        }
+                    }
+                    a {
+                        href: "/profile",
+                        aria_label: "Profile",
+                        class: "h-10 w-10 inline-flex items-center justify-center rounded-full bg-evergreen-soft text-evergreen hover:bg-evergreen hover:text-paper transition-colors",
+                        span { class: "text-[14px] leading-none", "◉" }
                     }
                 }
 
@@ -223,11 +216,83 @@ pub fn Sidenav(active: String, children: Element) -> Element {
     }
 }
 
+// ── Sidenav body (shared by desktop rail + mobile drawer) ───────────────
+#[component]
+fn SidenavBody(active: String, on_pick: EventHandler<()>) -> Element {
+    let on_pick_for_picker = on_pick;
+    let on_pick_for_nav = on_pick;
+    let on_pick_for_account = on_pick;
+    rsx! {
+        // Brand
+        a {
+            href: "/",
+            onclick: move |_| on_pick_for_nav.call(()),
+            class: "px-6 py-5 flex items-center gap-3 border-b border-rule hover:bg-bone-soft transition-colors shrink-0",
+            span {
+                class: "text-[22px] text-evergreen leading-none",
+                style: "font-family: var(--font-tamil);",
+                "ஷ"
+            }
+            span {
+                class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink",
+                "Sharam"
+            }
+        }
+
+        // Picker
+        div {
+            class: "px-3 pt-4 pb-4 border-b border-rule shrink-0",
+            SidenavPicker { on_pick: move |_| on_pick_for_picker.call(()) }
+        }
+
+        // Venture-scoped nav (contextual)
+        VentureNav {
+            active: active.clone(),
+            on_pick: move |_| on_pick_for_nav.call(()),
+        }
+
+        // Primary nav
+        nav {
+            class: "px-3 py-4 flex-1 overflow-y-auto",
+
+            p { class: "eyebrow px-3 mb-2", "ACCOUNT" }
+            NavItem {
+                href: "/profile".to_string(),
+                label: "Profile".to_string(),
+                icon: "◉".to_string(),
+                active: active == "profile",
+                on_pick: move |_| on_pick_for_account.call(()),
+            }
+            NavItem {
+                href: "/settings".to_string(),
+                label: "Settings".to_string(),
+                icon: "⚙".to_string(),
+                active: active == "settings",
+                on_pick: move |_| on_pick_for_account.call(()),
+            }
+            button {
+                r#type: "button",
+                onclick: move |_| sign_out(),
+                class: "tap-target group w-full text-left flex items-center gap-3 px-3 py-2.5 rounded-md text-[13.5px] text-ink-soft hover:bg-negative-soft hover:text-negative transition-colors",
+                span { class: "w-5 inline-flex items-center justify-center text-[13px] text-ink-faint group-hover:text-negative", "↩" }
+                span { "Sign out" }
+            }
+        }
+
+        // Footer
+        div {
+            class: "px-6 py-4 border-t border-rule text-[11px] text-ink-faint font-mono tracking-[0.14em] uppercase shrink-0",
+            "v0.1.0 · build 0001"
+        }
+    }
+}
+
 // ── Picker ──────────────────────────────────────────────────────────────
 #[component]
-fn SidenavPicker() -> Element {
+fn SidenavPicker(on_pick: EventHandler<()>) -> Element {
     let mut ctx = use_context::<VentureCtx>();
     let mut open = use_signal(|| false);
+    let _on_pick_drawer = on_pick;
 
     let ventures_opt = (ctx.ventures)();
     let selected_now = (ctx.selected)();
@@ -435,7 +500,7 @@ fn SidenavPickerOption(
 
 // ── Venture-scoped nav ──────────────────────────────────────────────────
 #[component]
-fn VentureNav(active: String) -> Element {
+fn VentureNav(active: String, on_pick: EventHandler<()>) -> Element {
     let ctx = use_context::<VentureCtx>();
     let active_v: Option<Venture> = (ctx.ventures)()
         .and_then(|list| (ctx.selected)().and_then(|s| list.iter().find(|v| v.slug == s).cloned()));
@@ -456,12 +521,14 @@ fn VentureNav(active: String) -> Element {
                     label: "Overview".to_string(),
                     icon: "▣".to_string(),
                     active: active == "venture-overview",
+                    on_pick,
                 }
                 NavItem {
                     href: format!("/ventures/{}/contribute", av.slug),
                     label: "Contribute".to_string(),
                     icon: "+".to_string(),
                     active: active == "venture-contribute",
+                    on_pick,
                 }
                 if is_admin {
                     NavItem {
@@ -469,12 +536,14 @@ fn VentureNav(active: String) -> Element {
                         label: "Manage".to_string(),
                         icon: "⚙".to_string(),
                         active: active == "venture-manage",
+                        on_pick,
                     }
                     NavItem {
                         href: format!("/ventures/{}/invites", av.slug),
                         label: "Invites".to_string(),
                         icon: "✉".to_string(),
                         active: active == "venture-invites",
+                        on_pick,
                     }
                 }
             }
@@ -483,8 +552,14 @@ fn VentureNav(active: String) -> Element {
 }
 
 #[component]
-fn NavItem(href: String, label: String, icon: String, active: bool) -> Element {
-    let base = "group flex items-center gap-3 px-3 py-2 rounded-md text-[13.5px] transition-colors";
+fn NavItem(
+    href: String,
+    label: String,
+    icon: String,
+    active: bool,
+    on_pick: EventHandler<()>,
+) -> Element {
+    let base = "tap-target group flex items-center gap-3 px-3 py-2.5 rounded-md text-[13.5px] transition-colors";
     let cls = if active {
         format!("{base} bg-evergreen-soft text-evergreen font-medium")
     } else {
@@ -498,6 +573,7 @@ fn NavItem(href: String, label: String, icon: String, active: bool) -> Element {
     rsx! {
         a {
             href: "{href}",
+            onclick: move |_| on_pick.call(()),
             class: "{cls}",
             span { class: "{icon_cls}", "{icon}" }
             span { "{label}" }

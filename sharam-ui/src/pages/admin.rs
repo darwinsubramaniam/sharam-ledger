@@ -269,7 +269,7 @@ fn Body(slug: String, display_name: String) -> Element {
     rsx! {
         // Breadcrumb
         div {
-            class: "px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-7 pb-3 flex items-center gap-3 text-[12px] text-ink-faint font-mono tracking-[0.12em] uppercase rise",
             a { href: "/dashboard", class: "hover:text-evergreen transition-colors", "Dashboard" }
             span { "›" }
             a { href: "/ventures/{slug}", class: "hover:text-evergreen transition-colors", "{slug}" }
@@ -279,7 +279,7 @@ fn Body(slug: String, display_name: String) -> Element {
 
         // Hero
         section {
-            class: "px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
+            class: "px-4 sm:px-6 lg:px-12 pt-2 pb-8 max-w-[1140px] rise",
             style: "animation-delay: 0.04s",
             p { class: "eyebrow mb-3", "INVITES · {slug}" }
             h1 { class: "display text-[clamp(2rem,4.5vw,3rem)] font-light leading-[1.05] text-ink",
@@ -291,7 +291,7 @@ fn Body(slug: String, display_name: String) -> Element {
         }
 
         if let Some(msg) = flash() {
-            section { class: "px-6 lg:px-12 max-w-[1140px]",
+            section { class: "px-4 sm:px-6 lg:px-12 max-w-[1140px]",
                 div { class: "card p-4 border-positive/40 bg-positive-soft/40",
                     p { class: "text-[13px] text-ink", "{msg}" }
                 }
@@ -299,7 +299,7 @@ fn Body(slug: String, display_name: String) -> Element {
         }
 
         section {
-            class: "px-6 lg:px-12 pb-12 max-w-[1140px] grid grid-cols-1 lg:grid-cols-12 gap-6 rise",
+            class: "px-4 sm:px-6 lg:px-12 pb-12 max-w-[1140px] grid grid-cols-1 lg:grid-cols-12 gap-6 rise",
             style: "animation-delay: 0.10s",
 
             // Form
@@ -527,7 +527,7 @@ fn InviteRow(slug: String, invite: InviteView, on_changed: EventHandler<()>) -> 
 #[component]
 fn LoadingShell() -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             p { class: "eyebrow mb-3", "INVITES" }
             div { class: "card p-10 text-center text-ink-soft text-[14px]",
                 "Verifying access…"
@@ -539,7 +539,7 @@ fn LoadingShell() -> Element {
 #[component]
 fn SignInPrompt() -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div { class: "card p-8",
                 p { class: "eyebrow mb-2", "SESSION EXPIRED" }
                 h2 { class: "font-display text-[20px] font-semibold text-ink", "You're not signed in" }
@@ -560,7 +560,7 @@ fn SignInPrompt() -> Element {
 #[component]
 fn ForbiddenPanel(slug: String) -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div { class: "card p-8",
                 p { class: "eyebrow !text-amber mb-2", "ADMIN ONLY" }
                 h2 { class: "font-display text-[20px] font-semibold text-ink",
@@ -582,7 +582,7 @@ fn ForbiddenPanel(slug: String) -> Element {
 #[component]
 fn ErrorPanel(message: String) -> Element {
     rsx! {
-        section { class: "px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
+        section { class: "px-4 sm:px-6 lg:px-12 pt-10 pb-16 max-w-[1140px]",
             div { class: "card p-8",
                 p { class: "eyebrow !text-negative mb-2", "ERROR" }
                 p { class: "text-[14px] text-ink-soft", "{message}" }

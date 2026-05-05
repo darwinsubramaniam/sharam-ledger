@@ -391,7 +391,7 @@ pub fn CreateTenant() -> Element {
         Sidenav { active: "create".to_string(),
             // Hero copy
             section {
-                class: "px-6 lg:px-12 pt-10 pb-6 max-w-[1100px] rise",
+                class: "px-4 sm:px-6 lg:px-12 pt-10 pb-6 max-w-[1100px] rise",
                 p { class: "eyebrow mb-4", "NEW LEDGER · YOU BECOME THE OWNER" }
                 h1 {
                     class: "display text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-[1.1] text-ink max-w-3xl",
@@ -410,7 +410,7 @@ pub fn CreateTenant() -> Element {
 
             // Two-column form
             div {
-                class: "px-6 lg:px-12 pb-20 max-w-[1100px] grid lg:grid-cols-[1fr_360px] gap-6 rise",
+                class: "px-4 sm:px-6 lg:px-12 pb-20 max-w-[1100px] grid lg:grid-cols-[1fr_360px] gap-6 rise",
                 style: "animation-delay: 0.05s",
 
                 // ── LEFT: form card ────────────────────────────────────

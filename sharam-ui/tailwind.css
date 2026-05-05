@@ -152,6 +152,14 @@
     from { transform: translateX(24px); opacity: 0; }
     to   { transform: translateX(0);    opacity: 1; }
 }
+@keyframes drawer-slide-left {
+    from { transform: translateX(-24px); opacity: 0; }
+    to   { transform: translateX(0);     opacity: 1; }
+}
+@keyframes drawer-rise {
+    from { transform: translateY(24px); opacity: 0; }
+    to   { transform: translateY(0);    opacity: 1; }
+}
 
 .drawer-overlay {
     position: fixed;
@@ -175,13 +183,77 @@
     flex-direction: column;
     animation: drawer-slide 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
 }
+/* On phones, the right-drawer becomes a bottom sheet — easier thumb reach
+   and avoids the awkward 100vw slide-from-right that leaves no exit affordance. */
+@media (max-width: 640px) {
+    .drawer {
+        top: 8vh;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        width: 100%;
+        max-width: 100%;
+        border-left: none;
+        border-top: 1px solid var(--color-rule);
+        border-top-left-radius: 16px;
+        border-top-right-radius: 16px;
+        box-shadow: 0 -16px 40px -16px rgba(26, 31, 44, 0.22);
+        animation: drawer-rise 0.24s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+    }
+}
 .drawer-body {
     flex: 1;
     overflow-y: auto;
     padding: 20px 20px 24px;
+    -webkit-overflow-scrolling: touch;
+}
+@media (max-width: 640px) {
+    .drawer-body {
+        padding: 16px 16px 28px;
+    }
 }
 /* MyPeriodPanel in compact mode handles its own spacing — drop the legacy
    override and let the panel's class control it. */
 .drawer-body > section {
     max-width: none;
+}
+
+/* ─── Left-side mobile nav drawer ─────────────────────────────────────── */
+.nav-drawer-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(26, 31, 44, 0.36);
+    backdrop-filter: blur(2px);
+    z-index: 55;
+    animation: drawer-fade 0.16s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.nav-drawer {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: min(284px, 84vw);
+    background: var(--color-paper);
+    border-right: 1px solid var(--color-rule);
+    box-shadow: 24px 0 48px -24px rgba(26, 31, 44, 0.22);
+    z-index: 65;
+    display: flex;
+    flex-direction: column;
+    animation: drawer-slide-left 0.22s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+    -webkit-overflow-scrolling: touch;
+}
+
+/* Subtle helper for ≥44px tap targets. Some buttons render at 32px-ish on
+   touch screens — use this to floor them to thumb-friendly. */
+.tap-target {
+    min-height: 44px;
+}
+
+/* Slightly larger field padding on phones so inputs hit the 44px floor
+   without making desktop forms feel chunky. */
+@media (max-width: 640px) {
+    .field-input {
+        padding: 12px 14px;
+        font-size: 15px;
+    }
 }

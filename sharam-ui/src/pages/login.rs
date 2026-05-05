@@ -113,7 +113,7 @@ pub fn Login() -> Element {
 
                 // ── LEFT: editorial brand statement ─────────────────────────
                 section {
-                    class: "relative px-8 pt-10 pb-16 lg:px-16 lg:pt-14 flex flex-col justify-between rise",
+                    class: "relative px-5 pt-8 pb-12 sm:px-8 sm:pt-10 sm:pb-16 lg:px-16 lg:pt-14 flex flex-col justify-between rise",
 
                     div {
                         class: "flex items-center gap-3",
@@ -165,14 +165,14 @@ pub fn Login() -> Element {
 
                 // ── RIGHT: auth card ────────────────────────────────────────
                 section {
-                    class: "relative flex items-center justify-center px-6 pb-16 pt-4 lg:px-12 lg:py-0 rise",
+                    class: "relative flex items-center justify-center px-4 pb-12 pt-2 sm:px-6 sm:pb-16 sm:pt-4 lg:px-12 lg:py-0 rise",
                     style: "animation-delay: 0.1s",
 
                     div {
                         class: "w-full max-w-md",
 
                         div {
-                            class: "card px-8 py-10 lg:px-10 lg:py-11",
+                            class: "card px-5 py-8 sm:px-8 sm:py-10 lg:px-10 lg:py-11",
 
                             p { class: "eyebrow", "AUTHENTICATE" }
                             h2 {

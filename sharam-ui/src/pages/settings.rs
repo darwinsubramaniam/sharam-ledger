@@ -7,7 +7,7 @@ pub fn Settings() -> Element {
     rsx! {
         Sidenav { active: "settings".to_string(),
             section {
-                class: "px-6 lg:px-12 pt-10 pb-6 max-w-[900px] rise",
+                class: "px-4 sm:px-6 lg:px-12 pt-10 pb-6 max-w-[900px] rise",
                 p { class: "eyebrow mb-4", "PREFERENCES" }
                 h1 {
                     class: "display text-[clamp(1.75rem,3.5vw,2.5rem)] font-light leading-[1.1] text-ink",
@@ -20,7 +20,7 @@ pub fn Settings() -> Element {
             }
 
             section {
-                class: "px-6 lg:px-12 pb-16 max-w-[900px] rise",
+                class: "px-4 sm:px-6 lg:px-12 pb-16 max-w-[900px] rise",
                 style: "animation-delay: 0.05s",
 
                 div {
