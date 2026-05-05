@@ -16,6 +16,7 @@ ARG RUST_VERSION=1
 ARG DEBIAN_VERSION=bookworm
 ARG NODE_VERSION=22
 ARG DX_VERSION=0.7.1
+ARG BUILD_SHA=dev
 
 # ---------------------------------------------------------------------------
 # Stage 1 — Tailwind CSS compile
@@ -33,6 +34,7 @@ RUN mkdir -p assets && npm run build:css
 # ---------------------------------------------------------------------------
 FROM rust:${RUST_VERSION}-slim-${DEBIAN_VERSION} AS dx-builder
 ARG DX_VERSION
+ARG BUILD_SHA
 WORKDIR /app
 RUN apt-get update \
     && apt-get install -y --no-install-recommends pkg-config libssl-dev ca-certificates curl \
@@ -45,6 +47,7 @@ COPY . .
 COPY --from=css /app/sharam-ui/assets/tailwind.css /app/sharam-ui/assets/tailwind.css
 
 WORKDIR /app/sharam-ui
+ENV SHARAM_BUILD_SHA=${BUILD_SHA}
 RUN dx bundle --release --platform web
 
 # ---------------------------------------------------------------------------

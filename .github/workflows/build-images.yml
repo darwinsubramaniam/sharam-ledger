@@ -33,9 +33,11 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.version }}
       is_release: ${{ steps.version.outputs.is_release }}
+      build_sha: ${{ steps.version.outputs.build_sha }}
     steps:
       - id: version
         run: |
+          BUILD_SHA="${GITHUB_SHA::7}"
           if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
             VERSION="${{ inputs.version }}"
             IS_RELEASE=true
@@ -43,12 +45,13 @@ jobs:
             VERSION="${GITHUB_REF#refs/tags/v}"
             IS_RELEASE=true
           else
-            VERSION="main-${GITHUB_SHA::7}"
+            VERSION="main-$BUILD_SHA"
             IS_RELEASE=false
           fi
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "is_release=$IS_RELEASE" >> "$GITHUB_OUTPUT"
-          echo "Building version: $VERSION (release=$IS_RELEASE)"
+          echo "build_sha=$BUILD_SHA" >> "$GITHUB_OUTPUT"
+          echo "Building version: $VERSION (release=$IS_RELEASE, sha=$BUILD_SHA)"
 
   build:
     needs: setup
@@ -63,6 +66,21 @@ jobs:
             dockerfile: docker/web.Dockerfile
     steps:
       - uses: actions/checkout@v4
+
+      - name: Bump workspace version on release
+        if: needs.setup.outputs.is_release == 'true'
+        run: |
+          VERSION="${{ needs.setup.outputs.version }}"
+          awk -v ver="$VERSION" '
+            /^\[workspace\.package\]/ { in_pkg=1; print; next }
+            in_pkg && /^\[/            { in_pkg=0 }
+            in_pkg && /^version = /    { print "version = \"" ver "\""; next }
+                                       { print }
+          ' Cargo.toml > Cargo.toml.new
+          mv Cargo.toml.new Cargo.toml
+          echo "::group::[workspace.package] after bump"
+          awk '/^\[workspace\.package\]/{p=1} p; /^\[/ && !/^\[workspace\.package\]/{p=0}' Cargo.toml
+          echo "::endgroup::"
 
       - uses: docker/setup-buildx-action@v3
 
@@ -87,5 +105,7 @@ jobs:
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            BUILD_SHA=${{ needs.setup.outputs.build_sha }}
           cache-from: type=gha,scope=${{ matrix.name }}
           cache-to: type=gha,scope=${{ matrix.name }},mode=max

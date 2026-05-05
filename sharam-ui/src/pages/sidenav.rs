@@ -282,7 +282,7 @@ fn SidenavBody(active: String, on_pick: EventHandler<()>) -> Element {
         // Footer
         div {
             class: "px-6 py-4 border-t border-rule text-[11px] text-ink-faint font-mono tracking-[0.14em] uppercase shrink-0",
-            "v0.1.0 · build 0001"
+            {concat!("v", env!("CARGO_PKG_VERSION"), " · ", env!("SHARAM_BUILD_SHA"))}
         }
     }
 }
