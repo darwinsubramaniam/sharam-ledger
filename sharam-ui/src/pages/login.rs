@@ -159,7 +159,10 @@ pub fn Login() -> Element {
                     div {
                         class: "mt-16 lg:mt-0 text-[12px] text-ink-faint",
                         "© 2026 Sharam Cooperative · "
-                        span { class: "font-mono tracking-[0.18em] uppercase text-[10.5px]", "v0.1.0" }
+                        span {
+                            class: "font-mono tracking-[0.18em] uppercase text-[10.5px]",
+                            {concat!("v", env!("CARGO_PKG_VERSION"), " · ", env!("SHARAM_BUILD_SHA"))}
+                        }
                     }
                 }
 

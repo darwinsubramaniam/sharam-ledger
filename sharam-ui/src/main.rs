@@ -182,7 +182,10 @@ fn Home() -> Element {
             footer {
                 class: "absolute bottom-0 left-0 right-0 px-8 lg:px-14 py-6 flex items-center justify-between text-[12px] text-ink-faint",
                 span { "© 2026 Sharam Cooperative" }
-                span { class: "font-mono tracking-[0.18em] uppercase text-[10.5px]", "v0.1.0 · Build 0001" }
+                span {
+                    class: "font-mono tracking-[0.18em] uppercase text-[10.5px]",
+                    {concat!("v", env!("CARGO_PKG_VERSION"), " · ", env!("SHARAM_BUILD_SHA"))}
+                }
             }
         }
     }
