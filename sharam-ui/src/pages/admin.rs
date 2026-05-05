@@ -1,4 +1,5 @@
 use dioxus::prelude::*;
+use dioxus_primitives::toast::{consume_toast, ToastOptions};
 use serde::{Deserialize, Serialize};
 
 use crate::api::{authed, into_api_error, ApiError};
@@ -231,7 +232,6 @@ fn Body(slug: String, display_name: String) -> Element {
     let mut email = use_signal(String::new);
     let mut role = use_signal(|| Role::Member);
     let mut form_error: Signal<Option<String>> = use_signal(|| None);
-    let mut flash: Signal<Option<String>> = use_signal(|| None);
     let mut submitting = use_signal(|| false);
 
     let submit = {
@@ -247,7 +247,6 @@ fn Body(slug: String, display_name: String) -> Element {
                     return;
                 }
                 form_error.set(None);
-                flash.set(None);
                 submitting.set(true);
                 let req = CreateInviteRequest {
                     email: e.clone(),
@@ -255,8 +254,12 @@ fn Body(slug: String, display_name: String) -> Element {
                 };
                 match post_invite(&slug, req).await {
                     Ok(()) => {
+                        let role_label = role().label().to_string();
                         email.set(String::new());
-                        flash.set(Some(format!("Invite sent to {} as {}.", e, role().label())));
+                        consume_toast().success(
+                            format!("Invite sent to {e}"),
+                            ToastOptions::new().description(format!("Joining as {role_label}.")),
+                        );
                         invites.restart();
                     }
                     Err(err) => form_error.set(Some(err.to_string())),
@@ -287,14 +290,6 @@ fn Body(slug: String, display_name: String) -> Element {
             }
             p { class: "mt-3 text-[14px] text-ink-soft max-w-2xl",
                 "Only admins of this venture can send invites. Pick a role for the invitee — Member is the default and can submit contributions; Treasurer can verify them; Admin gets full control."
-            }
-        }
-
-        if let Some(msg) = flash() {
-            section { class: "px-4 sm:px-6 lg:px-12 max-w-[1140px]",
-                div { class: "card p-4 border-positive/40 bg-positive-soft/40",
-                    p { class: "text-[13px] text-ink", "{msg}" }
-                }
             }
         }
 
@@ -418,7 +413,7 @@ fn InvitesTable(slug: String, list: Vec<InviteView>, on_changed: EventHandler<()
     rsx! {
         div { class: "card overflow-hidden",
             div {
-                class: "grid grid-cols-[2.4fr_1fr_1fr_180px] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
+                class: "hidden sm:grid grid-cols-[2.4fr_1fr_1fr_180px] gap-4 px-5 py-3 bg-bone-soft border-b border-rule text-[11px] text-ink-faint font-mono uppercase tracking-[0.14em]",
                 span { "Email" }
                 span { "Role" }
                 span { "Status" }
@@ -484,14 +479,23 @@ fn InviteRow(slug: String, invite: InviteView, on_changed: EventHandler<()>) -> 
     };
 
     rsx! {
-        div { class: "grid grid-cols-[2.4fr_1fr_1fr_180px] gap-4 items-center px-5 py-3.5 border-b border-rule-soft last:border-b-0",
+        div { class: "flex flex-col gap-2.5 sm:gap-4 sm:grid sm:grid-cols-[2.4fr_1fr_1fr_180px] sm:items-center px-4 sm:px-5 py-3 sm:py-3.5 border-b border-rule-soft last:border-b-0",
             div { class: "min-w-0",
-                p { class: "text-[14px] text-ink font-medium truncate", "{invite.email}" }
+                p { class: "text-[14px] text-ink font-medium break-all sm:truncate", "{invite.email}" }
                 p { class: "text-[11.5px] text-ink-faint font-mono", "Sent {created}" }
             }
-            div { p { class: "text-[13px] text-ink-soft", "{role_lbl}" } }
-            div { span { class: "{pill_cls}", "{invite.status}" } }
-            div { class: "text-right flex items-center justify-end gap-2",
+            div { class: "flex items-center gap-2 sm:hidden",
+                span { class: "text-[12.5px] text-ink-soft", "{role_lbl}" }
+                span { class: "text-ink-faint text-[11px]", "·" }
+                span { class: "{pill_cls}", "{invite.status}" }
+            }
+            div { class: "hidden sm:block",
+                p { class: "text-[13px] text-ink-soft", "{role_lbl}" }
+            }
+            div { class: "hidden sm:block",
+                span { class: "{pill_cls}", "{invite.status}" }
+            }
+            div { class: "flex items-center justify-end gap-2 sm:text-right",
                 if busy() {
                     span { class: "text-[12px] text-ink-faint font-mono", "…" }
                 } else {

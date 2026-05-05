@@ -1,7 +1,10 @@
 use dioxus::prelude::*;
 
 mod api;
+mod components;
 mod pages;
+
+use components::toast::ToastProvider;
 use api::fetch_public_config;
 use pages::admin::AdminInvites;
 use pages::create_tenant::CreateTenant;
@@ -39,6 +42,7 @@ enum Route {
 const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
+const DX_COMPONENTS_THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
 
 fn main() {
     dioxus::launch(App);
@@ -58,6 +62,7 @@ fn App() -> Element {
 
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
+        document::Stylesheet { href: DX_COMPONENTS_THEME_CSS }
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: TAILWIND_CSS }
         if !google_client_id.is_empty() {
@@ -66,7 +71,9 @@ fn App() -> Element {
                 content: google_client_id,
             }
         }
-        Router::<Route> {}
+        ToastProvider {
+            Router::<Route> {}
+        }
     }
 }
 
