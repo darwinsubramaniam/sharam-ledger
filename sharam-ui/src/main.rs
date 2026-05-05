@@ -112,7 +112,7 @@ fn Home() -> Element {
                     }
                     Link {
                         to: Route::Login {},
-                        class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep text-paper font-body text-[13px] font-medium tracking-wide px-4 py-2 rounded-md transition-colors",
+                        class: "inline-flex items-center gap-2 bg-evergreen hover:bg-evergreen-deep text-white font-body text-[13px] font-medium tracking-wide px-4 py-2 rounded-md transition-colors",
                         "Sign in"
                         span { class: "text-[16px] leading-none -mt-0.5", "→" }
                     }
@@ -146,7 +146,7 @@ fn Home() -> Element {
                     class: "mt-12 flex items-center gap-6",
                     Link {
                         to: Route::Dashboard {},
-                        class: "inline-flex items-center gap-3 bg-evergreen hover:bg-evergreen-deep text-paper font-body text-[15px] font-medium tracking-wide px-6 py-3.5 rounded-md transition-colors",
+                        class: "inline-flex items-center gap-3 bg-evergreen hover:bg-evergreen-deep text-white font-body text-[15px] font-medium tracking-wide px-6 py-3.5 rounded-md transition-colors",
                         "Open the ledger"
                         span { class: "text-[18px] leading-none", "→" }
                     }
