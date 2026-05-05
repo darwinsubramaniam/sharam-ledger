@@ -24,12 +24,14 @@ Sharam.toml
 node_modules/
 **/node_modules/
 
-# Docker artifacts themselves don't need to be in the build context.
-docker/
+# Docker artifacts themselves don't need to be in the build context — but
+# `docker/Caddyfile` IS copied into the web image, so we can't blanket-
+# exclude `docker/`. Excluding individual Dockerfile-shaped files instead.
 compose.yml
 .dockerignore
 Dockerfile
 **/Dockerfile
+docker/*.Dockerfile
 
 # Misc.
 *.log
