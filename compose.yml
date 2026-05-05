@@ -147,10 +147,6 @@ services:
     build:
       context: .
       dockerfile: docker/web.Dockerfile
-      args:
-        # Embedded into the wasm bundle by sharam-ui/build.rs at compile time.
-        # Must match SHARAM_GOOGLE__CLIENT_ID on the gateway.
-        SHARAM_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
     environment:
       # Caddy reads {$GATEWAY_UPSTREAM} for the /api proxy target. Override only
       # if you split web onto a different host than gateway.

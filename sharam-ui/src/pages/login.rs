@@ -46,8 +46,8 @@ return new Promise((resolve) => {
   try {
     const meta = document.querySelector('meta[name="sharam-google-client-id"]');
     const clientId = meta && meta.content;
-    if (!clientId || clientId === 'MISSING_GOOGLE_CLIENT_ID') {
-      return resolve({ ok: false, message: "Set [google].client_id in Sharam.toml, then rebuild" });
+    if (!clientId) {
+      return resolve({ ok: false, message: "Sign-in config not loaded yet — try again in a moment" });
     }
     if (!window.google || !window.google.accounts || !window.google.accounts.id) {
       return resolve({ ok: false, message: "Google sign-in script failed to load" });

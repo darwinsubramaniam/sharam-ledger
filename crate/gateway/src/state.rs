@@ -11,6 +11,9 @@ pub struct AppState {
     /// Verifies Google ID tokens posted to `/api/auth/google`. Not used by
     /// any other route — protected routes verify session JWTs locally.
     pub google: Arc<GoogleVerifier>,
+    /// OAuth 2.0 client ID for Google sign-in. Served to the frontend via
+    /// `GET /api/config` so the wasm bundle stays deployment-agnostic.
+    pub google_client_id: String,
     /// Issues + verifies Sharam session JWTs (HS256). Both `/api/auth/google`
     /// and `/api/auth/login` mint one of these on success; every protected
     /// route verifies one to authenticate the caller.

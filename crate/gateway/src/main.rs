@@ -82,6 +82,7 @@ fn build_app(cfg: &AppConfig, ledger: Ledger, proofs: ProofStore) -> anyhow::Res
 
     let state = AppState {
         google: Arc::new(GoogleVerifier::new(&cfg.google.client_id)),
+        google_client_id: cfg.google.client_id.clone(),
         sessions: SessionSigner::new(secret),
         ledger,
         mailer,
@@ -90,6 +91,7 @@ fn build_app(cfg: &AppConfig, ledger: Ledger, proofs: ProofStore) -> anyhow::Res
 
     let app = Router::new()
         .merge(routes::health::router())
+        .merge(routes::config::router())
         .merge(routes::auth::router())
         .merge(routes::tenants::router())
         .merge(routes::me::router())

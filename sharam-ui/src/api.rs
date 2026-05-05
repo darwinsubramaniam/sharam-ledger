@@ -67,6 +67,29 @@ pub fn authed(method: reqwest::Method, path: &str) -> Result<reqwest::RequestBui
         .header("Authorization", format!("Bearer {token}")))
 }
 
+/// Public, deployment-time config the gateway exposes to the wasm bundle so
+/// the same image can run against any Google OAuth client. Fetched once on
+/// app boot via `GET /api/config`.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PublicConfig {
+    pub google_client_id: String,
+}
+
+pub async fn fetch_public_config() -> Result<PublicConfig, ApiError> {
+    let url = api_url("/api/config")?;
+    let resp = reqwest::Client::new()
+        .get(&url)
+        .send()
+        .await
+        .map_err(|e| ApiError::Other(format!("network: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(into_api_error(resp).await);
+    }
+    resp.json::<PublicConfig>()
+        .await
+        .map_err(|e| ApiError::Other(format!("decode: {e}")))
+}
+
 /// Decoded subset of Google ID-token claims we actually use.
 /// The token is verified server-side on every protected request, so
 /// client-side decoding here is purely for display.

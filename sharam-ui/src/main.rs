@@ -2,6 +2,7 @@ use dioxus::prelude::*;
 
 mod api;
 mod pages;
+use api::fetch_public_config;
 use pages::admin::AdminInvites;
 use pages::create_tenant::CreateTenant;
 use pages::dashboard::Dashboard;
@@ -39,24 +40,31 @@ const FAVICON: Asset = asset!("/assets/favicon.ico");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 
-const GOOGLE_CLIENT_ID: &str = match option_env!("SHARAM_GOOGLE_CLIENT_ID") {
-    Some(id) => id,
-    None => "MISSING_GOOGLE_CLIENT_ID",
-};
-
 fn main() {
     dioxus::launch(App);
 }
 
 #[component]
 fn App() -> Element {
+    // Fetched on app boot from `GET /api/config`. The Google client ID lives
+    // server-side so the same wasm bundle can run against any deployment —
+    // login JS reads the meta tag at click time, by which point this fetch
+    // has long since resolved on any normal connection.
+    let cfg = use_resource(|| async move { fetch_public_config().await });
+    let google_client_id = match cfg() {
+        Some(Ok(c)) => c.google_client_id,
+        _ => String::new(),
+    };
+
     rsx! {
         document::Link { rel: "icon", href: FAVICON }
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: TAILWIND_CSS }
-        document::Meta {
-            name: "sharam-google-client-id",
-            content: GOOGLE_CLIENT_ID,
+        if !google_client_id.is_empty() {
+            document::Meta {
+                name: "sharam-google-client-id",
+                content: google_client_id,
+            }
         }
         Router::<Route> {}
     }

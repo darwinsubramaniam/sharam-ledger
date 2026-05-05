@@ -6,13 +6,11 @@
 #
 # Three stages:
 #   1. css       — compile Tailwind v4 → assets/tailwind.css (Node)
-#   2. dx-builder— bundle the wasm SPA (Rust + dx CLI), embedding the Google
-#                  client ID at compile time via sharam-ui/build.rs
+#   2. dx-builder— bundle the wasm SPA (Rust + dx CLI)
 #   3. runtime   — Caddy serving /srv with /api proxied to gateway
 #
-# The Google client ID must be supplied as a build arg or the resulting JS
-# will refuse to load Google sign-in (build.rs prints a warning, but the build
-# itself still succeeds).
+# The Google client ID is fetched at runtime from `GET /api/config` on the
+# gateway, so the resulting image is deployment-agnostic — no build args.
 
 ARG RUST_VERSION=1
 ARG DEBIAN_VERSION=bookworm
@@ -45,11 +43,6 @@ RUN cargo install dioxus-cli --locked --version ${DX_VERSION}
 COPY . .
 # Drop in the Tailwind output before bundling.
 COPY --from=css /app/sharam-ui/assets/tailwind.css /app/sharam-ui/assets/tailwind.css
-
-# Forwarded into sharam-ui/build.rs so the Google client ID is embedded into
-# the wasm. Build still succeeds without it (sign-in is just disabled).
-ARG SHARAM_GOOGLE_CLIENT_ID=""
-ENV SHARAM_GOOGLE__CLIENT_ID=${SHARAM_GOOGLE_CLIENT_ID}
 
 WORKDIR /app/sharam-ui
 RUN dx bundle --release --platform web

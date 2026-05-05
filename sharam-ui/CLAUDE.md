@@ -13,13 +13,9 @@ Two build pipelines run side-by-side:
 
 # Auth
 
-Google sign-in uses Google Identity Services (loaded via `Dioxus.toml` → `web.resource.script`). The browser reads the client ID at runtime from `<meta name="sharam-google-client-id">`, which is populated from the `GOOGLE_CLIENT_ID` const in `src/main.rs`. That const is filled at build time by `build.rs`, which:
+Google sign-in uses Google Identity Services (loaded via `Dioxus.toml` → `web.resource.script`). The browser reads the client ID at runtime from `<meta name="sharam-google-client-id">`, which is populated by `App` in `src/main.rs` from a `use_resource` call to `GET /api/config` on app boot. The wasm carries no embedded secrets — the same bundle runs against any deployment, and rotating the Google client ID in the gateway config is enough.
 
-1. Prefers env var `SHARAM_GOOGLE__CLIENT_ID` (matches the `figment` env-var convention used elsewhere).
-2. Otherwise reads `[google].client_id` from `../Sharam.toml`.
-3. Falls back to `"MISSING_GOOGLE_CLIENT_ID"` and emits a cargo warning if neither is found.
-
-Cargo reruns `build.rs` when `Sharam.toml` or the env var changes, so editing the toml triggers a rebuild on next `dx serve`. **Only the client ID is baked into the WASM** — `client_secret` and `redirect_uri` stay server-side. After `POST /api/auth/google` succeeds, `pages/login.rs` stores the ID token in `localStorage["sharam_id_token"]` and redirects to `/dashboard`. Subsequent API calls send it as `Authorization: Bearer …`. There is no session cookie; the gateway re-verifies the JWT on every protected request.
+After `POST /api/auth/google` succeeds, `pages/login.rs` stores the session JWT in `localStorage["sharam_id_token"]` and redirects to `/dashboard`. Subsequent API calls send it as `Authorization: Bearer …`. There is no session cookie; the gateway re-verifies the JWT on every protected request.
 
 # Pages
 

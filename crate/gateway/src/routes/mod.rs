@@ -1,5 +1,6 @@
 pub mod auth;
 pub mod carry_forward;
+pub mod config;
 pub mod contributions;
 pub mod health;
 pub mod invites;
