@@ -57,7 +57,7 @@ impl Mailer {
     }
 
     pub fn invite_link(&self, slug: &str) -> String {
-        format!("{}/venture/{}", self.inner.app_base_url, slug)
+        format!("{}/ventures/{}", self.inner.app_base_url, slug)
     }
 
     /// Send the invite email. Failures are logged and propagated; callers
