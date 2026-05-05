@@ -64,7 +64,7 @@ async fn list_members(
 ) -> Result<Json<MembersResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "members auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -76,7 +76,7 @@ async fn list_members(
     // as `GET /api/tenants/:slug/settings`.
     let memberships = state
         .ledger
-        .list_memberships_for(&claims.email)
+        .list_memberships_for(&identity.email)
         .await
         .map_err(|e| {
             warn!(error = %e, "list_memberships_for failed");

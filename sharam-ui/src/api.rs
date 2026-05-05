@@ -1,7 +1,7 @@
 use std::fmt;
 
 use dioxus::document;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApiError {
@@ -22,12 +22,28 @@ impl fmt::Display for ApiError {
     }
 }
 
+/// Storage key for the Sharam session JWT (HS256). Despite the legacy name
+/// (`sharam_id_token` was once the raw Google ID token), this now holds the
+/// gateway-minted session token regardless of sign-in method.
+pub const TOKEN_KEY: &str = "sharam_id_token";
+
 pub fn read_token() -> Option<String> {
     web_sys::window()?
         .local_storage()
         .ok()??
-        .get_item("sharam_id_token")
+        .get_item(TOKEN_KEY)
         .ok()?
+}
+
+pub fn store_token(token: &str) -> Result<(), ApiError> {
+    let storage = web_sys::window()
+        .ok_or_else(|| ApiError::Other("no window".into()))?
+        .local_storage()
+        .map_err(|_| ApiError::Other("localStorage unavailable".into()))?
+        .ok_or_else(|| ApiError::Other("localStorage unavailable".into()))?;
+    storage
+        .set_item(TOKEN_KEY, token)
+        .map_err(|_| ApiError::Other("localStorage write failed".into()))
 }
 
 pub fn api_url(path: &str) -> Result<String, ApiError> {
@@ -39,8 +55,8 @@ pub fn api_url(path: &str) -> Result<String, ApiError> {
     Ok(format!("{origin}{path}"))
 }
 
-/// Build a request with the Authorization header set to the stored Google
-/// ID token. Errors if the token is missing.
+/// Build a request with the Authorization header set to the stored Sharam
+/// session JWT. Errors if the token is missing.
 pub fn authed(method: reqwest::Method, path: &str) -> Result<reqwest::RequestBuilder, ApiError> {
     let Some(token) = read_token() else {
         return Err(ApiError::NotSignedIn);
@@ -108,10 +124,72 @@ pub fn sign_out() {
 
     if let Some(window) = web_sys::window() {
         if let Ok(Some(storage)) = window.local_storage() {
-            let _ = storage.remove_item("sharam_id_token");
+            let _ = storage.remove_item(TOKEN_KEY);
         }
         let _ = window.location().set_href("/login");
     }
+}
+
+// ─── auth endpoints ────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct AuthSuccess {
+    pub token: String,
+    /// Slugs the gateway just promoted from invite → membership for this
+    /// caller. Kept around so a future toast can announce them.
+    #[serde(default)]
+    #[allow(dead_code)]
+    pub accepted_invites: Vec<String>,
+}
+
+#[derive(Serialize)]
+struct LoginRequest<'a> {
+    email: &'a str,
+    password: &'a str,
+}
+
+#[derive(Serialize)]
+struct RegisterRequest<'a> {
+    email: &'a str,
+    password: &'a str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    display_name: Option<&'a str>,
+}
+
+async fn post_auth<B: Serialize>(path: &str, body: &B) -> Result<AuthSuccess, ApiError> {
+    let url = api_url(path)?;
+    let resp = reqwest::Client::new()
+        .post(&url)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| ApiError::Other(format!("network: {e}")))?;
+    if !resp.status().is_success() {
+        return Err(into_api_error(resp).await);
+    }
+    resp.json::<AuthSuccess>()
+        .await
+        .map_err(|e| ApiError::Other(format!("decode: {e}")))
+}
+
+pub async fn login_with_password(email: &str, password: &str) -> Result<AuthSuccess, ApiError> {
+    post_auth("/api/auth/login", &LoginRequest { email, password }).await
+}
+
+pub async fn register_with_password(
+    email: &str,
+    password: &str,
+    display_name: Option<&str>,
+) -> Result<AuthSuccess, ApiError> {
+    post_auth(
+        "/api/auth/register",
+        &RegisterRequest {
+            email,
+            password,
+            display_name,
+        },
+    )
+    .await
 }
 
 /// Map a non-success response into a typed error using the gateway's

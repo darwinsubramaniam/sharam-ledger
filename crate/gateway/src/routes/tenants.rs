@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use common::domain::{Cadence, TenantSlug};
-use ledger::{NewTenant, UpsertUser};
+use ledger::NewTenant;
 
 use crate::state::AppState;
 
@@ -65,10 +65,10 @@ async fn create_tenant(
     headers: HeaderMap,
     Json(payload): Json<CreateTenantRequest>,
 ) -> Result<Json<CreateTenantResponse>, (StatusCode, Json<ErrorBody>)> {
-    // 1. Auth — verify the Google ID token from the Authorization header.
+    // 1. Auth — verify the session JWT from the Authorization header.
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "tenant create auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -89,19 +89,18 @@ async fn create_tenant(
         ));
     }
 
-    // 3. Upsert the caller into the control-plane `user` table.
+    // 3. Look up the caller's existing user row. They must already exist —
+    //    `/api/auth/google` and `/api/auth/{login,register}` are the only
+    //    paths that mint a session, and each persists a row first.
     let user = state
         .ledger
-        .upsert_user(UpsertUser {
-            email: claims.email.clone(),
-            google_sub: claims.sub.clone(),
-            display_name: claims.name.clone(),
-        })
+        .get_user_by_email(&identity.email)
         .await
         .map_err(|e| {
-            warn!(error = %e, "upsert_user failed");
+            warn!(error = %e, "get_user_by_email failed");
             err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+        })?
+        .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "session refers to unknown user"))?;
 
     // 4. Provision the tenant. Ledger creates the namespace, applies the
     //    tenant schema, registers it in `tenant_directory`, and writes the
@@ -128,7 +127,7 @@ async fn create_tenant(
             }
         })?;
 
-    info!(slug = %slug, owner = %claims.email, "tenant created");
+    info!(slug = %slug, owner = %identity.email, "tenant created");
     Ok(Json(CreateTenantResponse {
         ok: true,
         slug: slug.into_inner(),

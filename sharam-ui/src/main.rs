@@ -8,7 +8,7 @@ use pages::dashboard::Dashboard;
 use pages::login::Login;
 use pages::profile::ProfilePage;
 use pages::settings::Settings;
-use pages::venture::VenturePage;
+use pages::venture::{ContributePage, ManagePage, OverviewPage};
 
 #[derive(Debug, Clone, Routable, PartialEq)]
 #[rustfmt::skip]
@@ -20,7 +20,11 @@ enum Route {
     #[route("/dashboard")]
     Dashboard {},
     #[route("/ventures/:slug")]
-    VenturePage { slug: String },
+    OverviewPage { slug: String },
+    #[route("/ventures/:slug/contribute")]
+    ContributePage { slug: String },
+    #[route("/ventures/:slug/manage")]
+    ManagePage { slug: String },
     #[route("/tenants/new")]
     CreateTenant {},
     #[route("/profile")]

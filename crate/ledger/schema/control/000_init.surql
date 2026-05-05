@@ -7,16 +7,28 @@
 -- governed by `schema/tenant/000_init.surql`.
 
 -- ─── user ───────────────────────────────────────────────────────────────────
--- A Google identity. `google_sub` is the stable subject claim, `email` is
--- the natural lookup key for invites.
+-- A Sharam identity. `email` is the natural lookup key. Sign-in methods are
+-- additive on the same row: a user may have `google_sub` set (Google
+-- sign-in), `password_hash` set (email/password), or both (account merged
+-- on second sign-in via the same email). At least one of the two must be
+-- present in practice; the schema doesn't enforce this so the row can be
+-- created with one method and have the other added later.
 DEFINE TABLE OVERWRITE user SCHEMAFULL;
-DEFINE FIELD OVERWRITE email        ON user TYPE string ASSERT string::is_email($value);
-DEFINE FIELD OVERWRITE google_sub   ON user TYPE option<string>;
-DEFINE FIELD OVERWRITE display_name ON user TYPE option<string>;
-DEFINE FIELD OVERWRITE display_tz   ON user TYPE string DEFAULT "UTC";
-DEFINE FIELD OVERWRITE created_at   ON user TYPE datetime DEFAULT time::now() READONLY;
-DEFINE INDEX OVERWRITE user_email_uniq      ON user FIELDS email      UNIQUE;
-DEFINE INDEX OVERWRITE user_google_sub_uniq ON user FIELDS google_sub UNIQUE;
+DEFINE FIELD OVERWRITE email         ON user TYPE string ASSERT string::is_email($value);
+DEFINE FIELD OVERWRITE google_sub    ON user TYPE option<string>;
+-- PHC-format Argon2id hash. NEVER returned over the wire.
+DEFINE FIELD OVERWRITE password_hash ON user TYPE option<string>;
+DEFINE FIELD OVERWRITE display_name  ON user TYPE option<string>;
+DEFINE FIELD OVERWRITE display_tz    ON user TYPE string DEFAULT "UTC";
+DEFINE FIELD OVERWRITE created_at    ON user TYPE datetime DEFAULT time::now() READONLY;
+DEFINE INDEX OVERWRITE user_email_uniq ON user FIELDS email UNIQUE;
+-- google_sub uniqueness was previously enforced by a UNIQUE index, but
+-- SurrealDB treats NONE as a value so multiple password-only users would
+-- collide on it. Drop the unique constraint and keep a plain lookup index;
+-- de-facto uniqueness still holds because the only writer (`upsert_user`)
+-- keys by email and email is unique.
+REMOVE INDEX IF EXISTS user_google_sub_uniq ON TABLE user;
+DEFINE INDEX OVERWRITE user_google_sub_idx ON user FIELDS google_sub;
 
 -- ─── invite ─────────────────────────────────────────────────────────────────
 -- Gates which Google emails may join which tenant. `tenant_slug` is the

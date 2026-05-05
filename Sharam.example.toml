@@ -4,6 +4,10 @@
 [gateway]
 bind = "127.0.0.1:8080"
 frontend_origin = "http://localhost:3000"
+# HS256 secret for Sharam-issued session JWTs. Must be at least 32 bytes
+# of random data. Rotating it invalidates every live session at once.
+# Generate with:  openssl rand -base64 48
+session_secret = "REPLACE_WITH_AT_LEAST_32_BYTES_OF_RANDOM_DATA"
 
 [surrealdb]
 endpoint = "ws://127.0.0.1:8000"

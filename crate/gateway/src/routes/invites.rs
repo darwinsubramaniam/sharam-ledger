@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
 use common::domain::{Role, TenantSlug};
-use ledger::{InviteRecord, NewInvite, RecordIdKey, UpsertUser};
+use ledger::{InviteRecord, NewInvite, RecordIdKey};
 
 use crate::mailer::InviteEmail;
 use crate::state::AppState;
@@ -120,7 +120,9 @@ fn invite_view(rec: InviteRecord) -> InviteView {
 }
 
 /// Verify the caller is an owner of `slug`. Returns the verified email + the
-/// caller's `RecordId` (fetched via `upsert_user`) for use in `invited_by`.
+/// caller's existing `UserRecord` for use in `invited_by`. The user row
+/// must already exist — sessions are only minted by sign-in/register paths
+/// that persist a row first.
 async fn require_owner(
     state: &AppState,
     headers: &HeaderMap,
@@ -128,14 +130,14 @@ async fn require_owner(
 ) -> Result<(String, ledger::UserRecord), (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "invites auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
 
     let memberships = state
         .ledger
-        .list_memberships_for(&claims.email)
+        .list_memberships_for(&identity.email)
         .await
         .map_err(|e| {
             warn!(error = %e, "list_memberships_for failed");
@@ -155,18 +157,15 @@ async fn require_owner(
 
     let user = state
         .ledger
-        .upsert_user(UpsertUser {
-            email: claims.email.clone(),
-            google_sub: claims.sub.clone(),
-            display_name: claims.name.clone(),
-        })
+        .get_user_by_email(&identity.email)
         .await
         .map_err(|e| {
-            warn!(error = %e, "upsert_user failed");
+            warn!(error = %e, "get_user_by_email failed");
             err(StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
-        })?;
+        })?
+        .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "session refers to unknown user"))?;
 
-    Ok((claims.email, user))
+    Ok((identity.email, user))
 }
 
 fn valid_email(s: &str) -> bool {

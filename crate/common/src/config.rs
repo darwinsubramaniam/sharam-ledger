@@ -19,6 +19,10 @@ pub struct AppConfig {
 pub struct GatewayConfig {
     pub bind: String,
     pub frontend_origin: String,
+    /// HS256 secret used to sign Sharam session JWTs. Must be at least 32
+    /// bytes of unguessable random data; rotating it invalidates every
+    /// live session in one shot.
+    pub session_secret: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]

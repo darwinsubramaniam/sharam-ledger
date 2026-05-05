@@ -74,7 +74,7 @@ fn cadence_word(c: &str) -> &'static str {
 #[component]
 pub fn Dashboard() -> Element {
     rsx! {
-        Sidenav { active: "venture-overview".to_string(),
+        Sidenav { active: "ventures".to_string(),
             DashboardBody {}
         }
     }

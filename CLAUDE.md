@@ -25,7 +25,7 @@ Config is loaded by `common::config::AppConfig::load()` via figment, in this pre
 2. `SHARAM_*` env vars, with `__` as the nesting separator (e.g. `SHARAM_GATEWAY__BIND=0.0.0.0:8080`, `SHARAM_GOOGLE__CLIENT_ID=...`).
 3. A `.env` file is auto-loaded if present.
 
-Required sections: `[gateway]`, `[surrealdb]`, `[storage]` (RustFS, S3-compatible), `[google]`.
+Required sections: `[gateway]` (with a 32+ byte `session_secret`), `[surrealdb]`, `[storage]` (RustFS, S3-compatible), `[google]`.
 
 ## Docker / Compose
 
@@ -54,12 +54,17 @@ Required sections: `[gateway]`, `[surrealdb]`, `[storage]` (RustFS, S3-compatibl
 Rust workspace with a backend (five crates under `crate/`) and a Dioxus frontend (`sharam-ui/`). All members share pinned versions via `[workspace.dependencies]` in the root `Cargo.toml` — crate manifests should reference deps as `{ workspace = true }` rather than re-pinning.
 
 - **`common`** — `AppConfig` (figment), tracing init, shared error type, and the domain primitives every other crate depends on: `TenantSlug`, `Period` (YYYY-MM, tenant-tz aware via `chrono-tz`), `Role`, `ContributionStatus`, and UUIDv7 ID newtypes (`UserId`, `MembershipId`, …).
-- **`auth`** — `GoogleVerifier` for Google-issued ID tokens: RS256, JWKS fetched from Google's well-known endpoint and cached with a 1-hour TTL behind an `RwLock`. `with_static_keys()` is the test seam — sign + verify locally without hitting Google.
+- **`auth`** — three pieces:
+  - `GoogleVerifier` — RS256 verifier for Google-issued ID tokens. JWKS fetched from Google's well-known endpoint and cached with a 1-hour TTL behind an `RwLock`. `with_static_keys()` is the test seam.
+  - `password::{hash_password, verify_password}` — Argon2id (PHC string format) for the email/password sign-in path.
+  - `SessionSigner` + `Identity` + `SessionClaims` — HS256 session JWT (`iss = "sharam"`, default 7-day TTL, leeway 0). Both Google sign-in and password sign-in mint one of these; every protected gateway route verifies one. Picture URL is carried as an optional claim purely for UI display.
 - **`ledger`** — SurrealDB 3.x client. Owns one persistent control-plane connection and lazily opens one cached connection per tenant. Schemas live in `crate/ledger/schema/{control,tenant}/*.surql` and are embedded with `include_str!`; apply with `Ledger::apply_control_schema()` and (per-tenant) `Ledger::create_tenant()`. Read methods include `upsert_user`, `list_memberships_for(email)`, `list_user_ventures(email)` (joins `membership` + `tenant_directory` for the dashboard view), and the contribution surface: `add_contribution` (CREATE — each call is one payment row), `list_contributions(slug, email, period)`, and `period_summary(slug, email, period) -> PeriodSummary { dues_cents, paid_cents, remaining_cents }`.
 - **`storage`** — scaffold for RustFS via `aws-sdk-s3` (S3-compatible). Currently exports error types only.
-- **`gateway`** — axum 0.8 HTTP entry point (`crate/gateway/src/main.rs`). Routes mounted under `crate/gateway/src/routes/`. `AppState` carries `Arc<GoogleVerifier>` + `Ledger` (control schema is applied at startup) + `Mailer`. CORS bound to `gateway.frontend_origin`. Routes today:
+- **`gateway`** — axum 0.8 HTTP entry point (`crate/gateway/src/main.rs`). Routes mounted under `crate/gateway/src/routes/`. `AppState` carries `Arc<GoogleVerifier>` + `SessionSigner` + `Ledger` (control schema is applied at startup) + `Mailer`. CORS bound to `gateway.frontend_origin`. The `gateway.session_secret` config value (≥32 bytes) signs every session JWT — rotating it invalidates every live session at once. Routes today:
   - `GET /health`
-  - `POST /api/auth/google` (verifies a credential, returns user info)
+  - `POST /api/auth/google` (verifies a Google credential, mints a session JWT, returns `{ token, user, accepted_invites }`)
+  - `POST /api/auth/register` (creates a password user + mints a session JWT; merges into an existing Google-only row if the email already exists without a password)
+  - `POST /api/auth/login` (verifies email + Argon2 password against the control plane, mints a session JWT)
   - `POST /api/tenants` (creates tenant + first owner-membership)
   - `GET /api/me/ventures` (caller's tenants joined with directory display name + role)
   - `GET|PATCH /api/tenants/:slug/settings` (read by any member; PATCH owner-only)
@@ -91,12 +96,16 @@ The cap is what allows partial payments: many `contribution` rows per `(user, pe
 
 ### Auth model on the wire
 
-Mutating routes and `/api/me/*` expect `Authorization: Bearer <google_id_token>`. There is **no session token** — the frontend keeps the original Google ID JWT in `localStorage["sharam_id_token"]` after `/api/auth/google` succeeds, and attaches it on every subsequent request. The gateway re-verifies via `GoogleVerifier::verify` on each call. Tokens expire after ~1h; expired tokens cause 401 and the UI prompts re-sign-in. When introducing a real session, replace at the gateway and frontend in lockstep.
+Two sign-in methods, one session token. `POST /api/auth/google`, `/api/auth/register`, and `/api/auth/login` each mint the same artifact: a Sharam-issued **session JWT** (HS256, signed by `gateway.session_secret`, `iss = "sharam"`, 7-day TTL). The frontend stores it under `localStorage["sharam_id_token"]` (legacy key — predates the rename) and attaches it as `Authorization: Bearer <token>` on every protected request. The gateway verifies via `state.sessions.verify(token)` — fully local, no network hop per request.
+
+`GoogleVerifier::verify` is now only called inside the `/api/auth/google` handler. JWT expiry → 401 → UI redirects to `/login`. Rotating `session_secret` invalidates every live session. The `picture` URL on the session token is purely cosmetic (avatar render in the profile page) — verification doesn't touch it.
+
+Password storage: `user.password_hash` is an `option<string>` PHC-format Argon2id hash. Google-only users have it `NONE`; password-only users have it set; merged accounts (same email signs in via both methods) have both `google_sub` and `password_hash` set. `upsert_user` (Google path) deliberately does **not** write `password_hash`, and `create_password_user` (register path) returns `Error::UserExists` only if the row already has a password — letting a Google-only user attach a password later by registering with the same email.
 
 ### Adding a gateway route
 
 1. New module under `crate/gateway/src/routes/`, return a `Router<AppState>` from `pub fn router()`.
-2. Auth-protected routes pull `Authorization: Bearer …` from `HeaderMap`, then `state.google.verify(token).await` to get `GoogleClaims`. Use `claims.email` as the join key into `user`/`membership`.
+2. Auth-protected routes pull `Authorization: Bearer …` from `HeaderMap`, then `state.sessions.verify(token)` to get an `Identity { email, name, picture }`. Use `identity.email` as the join key into `user`/`membership`. If a route needs the caller's `RecordId` (e.g. for `invited_by`/`created_by`), call `state.ledger.get_user_by_email(&identity.email)` — the user row is guaranteed to exist because every session-minting path persists a row first; treat `None` as 401.
 3. Map `ledger::Error` to HTTP status: `TenantExists` → 409, `InviteExists` → 409, `PeriodLocked` → 422, `DuesCapExceeded` → 422, `NotFound` → 404, anything else → 500. Return `{ok:false, error:"..."}` envelope on errors so the frontend can surface a message.
 4. Mount in `routes/mod.rs` and merge in `main::build_app`.
 

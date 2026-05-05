@@ -360,6 +360,16 @@ fn SidenavPicker() -> Element {
                                                 ctx.selected.set(Some(slug.clone()));
                                                 write_stored(Some(&slug));
                                                 open.set(false);
+                                                // Land on the venture dashboard regardless of
+                                                // which sub-page (manage/contribute/invites) the
+                                                // user was viewing — switching context should
+                                                // reset to overview, not show the new venture's
+                                                // manage page just because the URL slug swapped.
+                                                if let Some(win) = web_sys::window() {
+                                                    let _ = win
+                                                        .location()
+                                                        .set_href(&format!("/ventures/{slug}"));
+                                                }
                                             },
                                         }
                                     }
@@ -440,21 +450,26 @@ fn VentureNav(active: String) -> Element {
             class: "px-3 pt-4 pb-4 border-b border-rule shrink-0",
             p { class: "eyebrow px-3 mb-2", "VENTURE" }
 
-            NavItem {
-                href: "/dashboard".to_string(),
-                label: "Overview".to_string(),
-                icon: "▣".to_string(),
-                active: active == "venture-overview",
-            }
-
             if let Some(av) = active_v {
                 NavItem {
                     href: format!("/ventures/{}", av.slug),
-                    label: if is_admin { "Manage".to_string() } else { "Open ledger".to_string() },
-                    icon: "▤".to_string(),
-                    active: active == "venture-manage",
+                    label: "Overview".to_string(),
+                    icon: "▣".to_string(),
+                    active: active == "venture-overview",
+                }
+                NavItem {
+                    href: format!("/ventures/{}/contribute", av.slug),
+                    label: "Contribute".to_string(),
+                    icon: "+".to_string(),
+                    active: active == "venture-contribute",
                 }
                 if is_admin {
+                    NavItem {
+                        href: format!("/ventures/{}/manage", av.slug),
+                        label: "Manage".to_string(),
+                        icon: "⚙".to_string(),
+                        active: active == "venture-manage",
+                    }
                     NavItem {
                         href: format!("/ventures/{}/invites", av.slug),
                         label: "Invites".to_string(),

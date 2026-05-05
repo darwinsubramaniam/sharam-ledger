@@ -53,14 +53,14 @@ async fn list_my_ventures(
 ) -> Result<Json<VenturesResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "ventures auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
 
     let ventures = state
         .ledger
-        .list_user_ventures(&claims.email)
+        .list_user_ventures(&identity.email)
         .await
         .map_err(|e| {
             warn!(error = %e, "list_user_ventures failed");

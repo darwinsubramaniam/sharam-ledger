@@ -117,7 +117,7 @@ async fn get_settings(
 ) -> Result<Json<SettingsResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "settings get auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -126,7 +126,7 @@ async fn get_settings(
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
     // Any member can read.
-    if caller_role(&state, &claims.email, &slug).await?.is_none() {
+    if caller_role(&state, &identity.email, &slug).await?.is_none() {
         return Err(err(StatusCode::FORBIDDEN, "not a member of this venture"));
     }
 
@@ -156,7 +156,7 @@ async fn patch_settings(
 ) -> Result<Json<SettingsResponse>, (StatusCode, Json<ErrorBody>)> {
     let token = extract_bearer(&headers)
         .ok_or_else(|| err(StatusCode::UNAUTHORIZED, "missing bearer token"))?;
-    let claims = state.google.verify(token).await.map_err(|e| {
+    let identity = state.sessions.verify(token).map_err(|e| {
         warn!(error = %e, "settings patch auth failed");
         err(StatusCode::UNAUTHORIZED, e.to_string())
     })?;
@@ -165,7 +165,7 @@ async fn patch_settings(
         TenantSlug::new(slug.as_str()).map_err(|e| err(StatusCode::BAD_REQUEST, e.to_string()))?;
 
     // Owner-only mutation. Treasurers manage contributions, not venture config.
-    match caller_role(&state, &claims.email, &slug).await? {
+    match caller_role(&state, &identity.email, &slug).await? {
         Some(r) if r == "owner" => {}
         Some(_) => return Err(err(StatusCode::FORBIDDEN, "owner role required")),
         None => return Err(err(StatusCode::FORBIDDEN, "not a member of this venture")),
@@ -205,7 +205,7 @@ async fn patch_settings(
             }
         })?;
 
-    info!(slug = %slug, by = %claims.email, "settings updated");
+    info!(slug = %slug, by = %identity.email, "settings updated");
     Ok(Json(SettingsResponse {
         ok: true,
         settings: settings_view(s),
