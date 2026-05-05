@@ -1,0 +1,17 @@
+/target
+Cargo.lock.bak
+
+# Local config — keep secrets out of git
+Sharam.toml
+.env
+.env.local
+
+# Local SurrealDB rocksdb store
+.surreal-data/
+
+# OS
+.DS_Store
+
+# Node (sharam-ui Tailwind toolchain)
+node_modules/
+sharam-ui/assets/tailwind.css

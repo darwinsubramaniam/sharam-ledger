@@ -1,0 +1,24 @@
+[package]
+name = "auth"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+common = { workspace = true }
+jsonwebtoken = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+tokio = { workspace = true, features = ["sync"] }
+
+[dev-dependencies]
+tokio = { workspace = true, features = ["macros", "rt"] }
+rsa = "0.9"
+# rsa 0.9 is built against rand_core 0.6 traits; pull rand_core directly so
+# the OsRng we hand to RsaPrivateKey::new implements the right RngCore trait
+# version. (rand 0.10 ships rand_core 0.10, which is incompatible.)
+rand_core = { version = "0.6", features = ["getrandom"] }
+base64 = "0.22"

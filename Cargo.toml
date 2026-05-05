@@ -1,0 +1,126 @@
+[workspace]
+members = [
+    "crate/auth",
+    "crate/common",
+    "crate/gateway",
+    "crate/ledger",
+    "crate/storage",
+    "sharam-ui",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+
+[workspace.dependencies]
+anyhow = "1.0"
+aws-sdk-s3 = "1"
+axum = "0.8"
+dotenvy = "0.15"
+http = "1.4"
+# jsonwebtoken 10 needs exactly ONE crypto provider feature. surrealdb-core
+# already pulls in `aws_lc_rs` transitively, so we don't add anything here —
+# adding `rust_crypto` would activate a second provider and jsonwebtoken
+# would panic at first use ("could not automatically determine").
+jsonwebtoken = "10.3"
+oauth2 = "5.0"
+serde_json = "1.0"
+surrealdb = "3.0"
+thiserror = "2.0"
+tower = "0.5"
+tracing = "0.1"
+
+[workspace.dependencies.auth]
+path = "crate/auth"
+
+[workspace.dependencies.aws-config]
+version = "1"
+features = ["behavior-version-latest"]
+
+[workspace.dependencies.chrono]
+version = "0.4"
+features = [
+    "serde",
+    "clock",
+]
+
+# WASM-renderable ECharts via charming. The browser must have `echarts.min.js`
+# loaded before any chart renders — see Dioxus.toml `web.resource.script`.
+[workspace.dependencies.charming]
+version = "0.6"
+default-features = false
+features = ["wasm"]
+
+[workspace.dependencies.chrono-tz]
+version = "0.10"
+features = ["serde"]
+
+[workspace.dependencies.common]
+path = "crate/common"
+
+[workspace.dependencies.figment]
+version = "0.10.19"
+features = [
+    "toml",
+    "env",
+]
+
+[workspace.dependencies.ledger]
+path = "crate/ledger"
+
+# SMTP client for transactional emails (invites). `aws-lc-rs` is selected to
+# match the crypto provider already pulled in by surrealdb-core / jsonwebtoken
+# — having two providers in the same binary makes rustls panic at first use.
+[workspace.dependencies.lettre]
+version = "0.11"
+default-features = false
+features = [
+    "smtp-transport",
+    "tokio1-rustls",
+    "builder",
+    "aws-lc-rs",
+    "webpki-roots",
+]
+
+[workspace.dependencies.reqwest]
+version = "0.13"
+features = [
+    "json",
+    "rustls",
+    "http2",
+]
+default-features = false
+
+[workspace.dependencies.serde]
+version = "1.0"
+features = ["derive"]
+
+[workspace.dependencies.storage]
+path = "crate/storage"
+
+[workspace.dependencies.tokio]
+version = "1.52"
+features = ["full"]
+
+[workspace.dependencies.tower-http]
+version = "0.6"
+features = [
+    "cors",
+    "trace",
+    "limit",
+]
+
+[workspace.dependencies.tracing-subscriber]
+version = "0.3"
+features = [
+    "env-filter",
+    "json",
+]
+
+[workspace.dependencies.uuid]
+version = "1"
+features = [
+    "v7",
+    "serde",
+]

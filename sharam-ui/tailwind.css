@@ -1,0 +1,123 @@
+@import "tailwindcss";
+
+@source "./src/**/*.rs";
+
+@theme {
+    /* ─── Surfaces ─────────────────────────────────────────────────────── */
+    --color-bone: #f7f3eb;          /* page background — warm parchment */
+    --color-bone-soft: #f1ebde;     /* nested wells, table stripes */
+    --color-paper: #ffffff;         /* card surface */
+    --color-rule: #e8e2d5;          /* hairline borders */
+    --color-rule-soft: #efe9da;     /* lighter dividers */
+
+    /* ─── Ink (text) ───────────────────────────────────────────────────── */
+    --color-ink: #1a1f2c;           /* primary copy */
+    --color-ink-soft: #5a6478;      /* secondary */
+    --color-ink-faint: #9099aa;     /* tertiary, captions, placeholders */
+
+    /* ─── Brand & accents ──────────────────────────────────────────────── */
+    --color-evergreen: #1f4d3d;     /* primary — trust, growth */
+    --color-evergreen-deep: #163428;
+    --color-evergreen-soft: #e3ede7;
+    --color-copper: #b8703d;        /* warm accent — highlights, hover */
+    --color-copper-soft: #f4e6d8;
+
+    /* ─── Status (classic financial) ───────────────────────────────────── */
+    --color-positive: #2d6a4f;
+    --color-positive-soft: #d9ebe1;
+    --color-negative: #b23a48;
+    --color-negative-soft: #f5dcdf;
+    --color-amber: #c8801d;
+    --color-amber-soft: #f9ead0;
+
+    /* ─── Type ─────────────────────────────────────────────────────────── */
+    --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+    --font-body: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+    --font-tamil: "Noto Sans Tamil", "Latha", "Tamil Sangam MN", serif;
+}
+
+@layer utilities {
+    /* Soft-elevated card — almost flush, warm shadow */
+    .card {
+        background: var(--color-paper);
+        border: 1px solid var(--color-rule);
+        border-radius: 12px;
+        box-shadow:
+            0 1px 0 rgba(26, 31, 44, 0.02),
+            0 8px 24px -16px rgba(26, 31, 44, 0.10);
+    }
+    .card-flat {
+        background: var(--color-paper);
+        border: 1px solid var(--color-rule);
+        border-radius: 12px;
+    }
+    .well {
+        background: var(--color-bone-soft);
+        border: 1px solid var(--color-rule-soft);
+        border-radius: 10px;
+    }
+
+    /* Eyebrow label (small caps, mono) — for section tags */
+    .eyebrow {
+        font-family: var(--font-mono);
+        font-size: 11px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        color: var(--color-ink-faint);
+    }
+
+    /* Display headline — Fraunces, mild optical sizing tweaks */
+    .display {
+        font-family: var(--font-display);
+        font-variation-settings: "opsz" 96, "SOFT" 50;
+        letter-spacing: -0.015em;
+    }
+
+    /* Tabular numerals — for ledger figures */
+    .tnum {
+        font-variant-numeric: tabular-nums;
+    }
+
+    /* Subtle paper grain — applied sparingly to hero blocks */
+    .paper-grain {
+        background-image:
+            radial-gradient(circle at 1px 1px, rgba(26, 31, 44, 0.018) 1px, transparent 0);
+        background-size: 3px 3px;
+    }
+
+    /* Hairline divider (full bleed) */
+    .hairline {
+        height: 1px;
+        background: var(--color-rule);
+    }
+
+    /* Tinted status pill backgrounds */
+    .pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        padding: 2px 8px;
+        border-radius: 999px;
+        font-family: var(--font-mono);
+        font-size: 10.5px;
+        letter-spacing: 0.08em;
+        text-transform: uppercase;
+        font-weight: 500;
+    }
+    .pill-positive { background: var(--color-positive-soft); color: var(--color-positive); }
+    .pill-negative { background: var(--color-negative-soft); color: var(--color-negative); }
+    .pill-amber    { background: var(--color-amber-soft);    color: var(--color-amber); }
+    .pill-evergreen{ background: var(--color-evergreen-soft);color: var(--color-evergreen); }
+    .pill-neutral  { background: var(--color-bone-soft);     color: var(--color-ink-soft); }
+}
+
+/* Soft entrance — for page sections */
+@keyframes rise {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+.rise {
+    opacity: 0;
+    animation: rise 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}

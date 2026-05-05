@@ -1,0 +1,37 @@
+# Build artifacts — let the multi-stage build produce these from clean.
+target/
+sharam-ui/dist/
+**/.dioxus/
+
+# Local data + secrets that must never end up in an image.
+.surreal-data/
+Sharam.toml
+.env
+.env.local
+.env.*.local
+
+# VCS / editor / OS noise.
+.git/
+.gitignore
+.github/
+.claude/
+.vscode/
+.idea/
+.DS_Store
+**/.DS_Store
+
+# Node toolchain (Tailwind) — installed fresh in builder if needed.
+node_modules/
+**/node_modules/
+
+# Docker artifacts themselves don't need to be in the build context.
+docker/
+compose.yml
+.dockerignore
+Dockerfile
+**/Dockerfile
+
+# Misc.
+*.log
+*.swp
+*.swo

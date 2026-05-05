@@ -1,0 +1,130 @@
+name: sharam
+
+# Default `docker compose up` runs only backing services (surrealdb + rustfs)
+# so you can `cargo run -p gateway` and `dx serve --package sharam-ui` on the
+# host with HMR. To run the full stack (production-shaped, deployable to your
+# server), enable the `app` profile:
+#
+#   docker compose --profile app up -d --build
+#
+# Config flow:
+#   - Backing services use compose env (SURREAL_PASS, RUSTFS_*, etc.)
+#   - Gateway reads SHARAM_* env vars (figment, __ = nesting) — no Sharam.toml
+#     needed inside the container.
+
+services:
+  surrealdb:
+    image: surrealdb/surrealdb:latest
+    # Pin once you've chosen a 3.x patch you trust, e.g. surrealdb/surrealdb:v3.0.0.
+    command:
+      - start
+      - --user
+      - root
+      - --pass
+      - ${SURREAL_PASS:-root}
+      - --bind
+      - 0.0.0.0:8000
+      - rocksdb:/data/surreal.db
+    volumes:
+      - surreal-data:/data
+    ports:
+      # Bind to loopback only so dev (cargo run on host) can reach it; not
+      # exposed publicly when running with --profile app on a server.
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rustfs:
+    image: rustfs/rustfs:latest
+    environment:
+      RUSTFS_ROOT_USER: ${RUSTFS_USER:-rustfs}
+      RUSTFS_ROOT_PASSWORD: ${RUSTFS_PASS:-rustfs}
+      RUSTFS_ADDRESS: ":9000"
+    volumes:
+      - rustfs-data:/data
+    ports:
+      - "127.0.0.1:9000:9000"
+    restart: unless-stopped
+
+  # Local SMTP catcher for invite emails. Brought up with the default
+  # `docker compose up -d` so the dev gateway (running on the host) can send
+  # mail to 127.0.0.1:1025 — Sharam.toml's [smtp] block is preconfigured for
+  # this. Browse caught messages at http://localhost:8025.
+  #
+  # On `--profile app` (server) this still runs but the gateway should point
+  # at a real provider via SHARAM_SMTP__HOST/PORT/etc. — mailhog is unused
+  # there. `docker compose stop mailhog` if you want it off.
+  mailhog:
+    image: mailhog/mailhog:latest
+    ports:
+      - "127.0.0.1:1025:1025"
+      - "127.0.0.1:8025:8025"
+    restart: unless-stopped
+
+  gateway:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: docker/gateway.Dockerfile
+    environment:
+      SHARAM_GATEWAY__BIND: 0.0.0.0:8080
+      SHARAM_GATEWAY__FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      SHARAM_SURREALDB__ENDPOINT: ws://surrealdb:8000
+      SHARAM_SURREALDB__NAMESPACE: ${SURREAL_NS:-system}
+      SHARAM_SURREALDB__DATABASE: ${SURREAL_DB:-control}
+      SHARAM_SURREALDB__USERNAME: root
+      SHARAM_SURREALDB__PASSWORD: ${SURREAL_PASS:-root}
+      SHARAM_STORAGE__ENDPOINT: http://rustfs:9000
+      SHARAM_STORAGE__REGION: ${STORAGE_REGION:-us-east-1}
+      SHARAM_STORAGE__BUCKET: ${STORAGE_BUCKET:-sharam-proofs}
+      SHARAM_STORAGE__ACCESS_KEY_ID: ${RUSTFS_USER:-rustfs}
+      SHARAM_STORAGE__SECRET_ACCESS_KEY: ${RUSTFS_PASS:-rustfs}
+      SHARAM_GOOGLE__CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      SHARAM_GOOGLE__CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      SHARAM_GOOGLE__REDIRECT_URI: ${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
+      SHARAM_SMTP__HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SHARAM_SMTP__PORT: ${SMTP_PORT:-587}
+      SHARAM_SMTP__USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required}
+      SHARAM_SMTP__PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+      SHARAM_SMTP__ENCRYPTION: ${SMTP_ENCRYPTION:-starttls}
+      SHARAM_SMTP__FROM_EMAIL: ${SMTP_FROM_EMAIL:?SMTP_FROM_EMAIL is required}
+      SHARAM_SMTP__FROM_NAME: ${SMTP_FROM_NAME:-Sharam}
+      SHARAM_SMTP__APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
+      RUST_LOG: ${RUST_LOG:-info,tower_http=debug}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      rustfs:
+        condition: service_started
+    restart: unless-stopped
+
+  web:
+    profiles: ["app"]
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        # Embedded into the wasm bundle by sharam-ui/build.rs at compile time.
+        # Must match SHARAM_GOOGLE__CLIENT_ID on the gateway.
+        SHARAM_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+    environment:
+      # Caddy reads {$GATEWAY_UPSTREAM} for the /api proxy target. Override only
+      # if you split web onto a different host than gateway.
+      GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-gateway:8080}
+      # Set SITE_ADDRESS to your domain (e.g. sharam.example.com) once you
+      # point DNS — Caddy will provision Let's Encrypt automatically.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${WEB_HTTP_PORT:-80}:80"
+      - "${WEB_HTTPS_PORT:-443}:443"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  surreal-data:
+  rustfs-data:

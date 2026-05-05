@@ -1,0 +1,19 @@
+[package]
+name = "ledger"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+common = { workspace = true }
+surrealdb = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+tokio = { workspace = true }
+
+[dev-dependencies]
+surrealdb = { workspace = true, features = ["kv-mem"] }
+tokio = { workspace = true }

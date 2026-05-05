@@ -1,0 +1,37 @@
+# Copy to Sharam.toml (or override via SHARAM_* env vars, double-underscore for nesting,
+# e.g. SHARAM_GATEWAY__BIND=0.0.0.0:8080).
+
+[gateway]
+bind = "127.0.0.1:8080"
+frontend_origin = "http://localhost:3000"
+
+[surrealdb]
+endpoint = "ws://127.0.0.1:8000"
+namespace = "sharam"
+database = "main"
+username = "root"
+password = "root"
+
+[storage]
+endpoint = "http://127.0.0.1:9000"
+region = "us-east-1"
+bucket = "sharam-proofs"
+access_key_id = "rustfs"
+secret_access_key = "rustfs"
+
+[google]
+client_id = "REPLACE_WITH_YOUR_CLIENT_ID.apps.googleusercontent.com"
+client_secret = "REPLACE_WITH_YOUR_CLIENT_SECRET"
+redirect_uri = "http://localhost:3000/api/auth/callback/google"
+
+[smtp]
+# encryption: "starttls" (587, recommended), "tls" (465), or "plain" (local mailhog)
+host = "smtp.example.com"
+port = 587
+username = "REPLACE_WITH_SMTP_USERNAME"
+password = "REPLACE_WITH_SMTP_PASSWORD"
+encryption = "starttls"
+from_email = "no-reply@sharam.example.com"
+from_name = "Sharam"
+# Public origin used to build invite links (e.g. https://sharam.example.com).
+app_base_url = "http://localhost:3000"

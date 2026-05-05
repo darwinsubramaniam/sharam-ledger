@@ -1,0 +1,40 @@
+# Caddyfile — fronts the Dioxus SPA and proxies /api/* to the gateway.
+#
+# SITE_ADDRESS controls the listening address:
+#   :80                    — HTTP only (default; correct for `compose up` on
+#                            localhost or behind another reverse proxy)
+#   sharam.example.com     — automatic HTTPS via Let's Encrypt (Caddy needs
+#                            ports 80/443 reachable and a real A/AAAA record)
+#
+# GATEWAY_UPSTREAM defaults to gateway:8080 (the compose service).
+
+{$SITE_ADDRESS:":80"} {
+	encode zstd gzip
+
+	# Pass /api/* straight through to the axum gateway. Strip nothing — the
+	# gateway routes are mounted at /api/... already.
+	handle /api/* {
+		reverse_proxy {$GATEWAY_UPSTREAM:gateway:8080} {
+			# Forward the original Host so CORS/Origin checks see the real value.
+			header_up Host {host}
+			header_up X-Real-IP {remote_host}
+		}
+	}
+
+	# Static assets + SPA fallback for everything else.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+
+	# Sane defaults for a SPA: long cache on hashed assets, no cache on the shell.
+	@hashed path_regexp \.[0-9a-f]{8,}\.(js|wasm|css|png|jpg|svg|woff2?)$
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	header /index.html Cache-Control "no-cache"
+
+	log {
+		output stdout
+		format console
+	}
+}
