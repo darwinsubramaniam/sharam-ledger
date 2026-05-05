@@ -1,0 +1,134 @@
+name: sharam
+
+# Production / self-host compose. Pulls the gateway and web images from GHCR
+# (built by .github/workflows/build-images.yml — every release tags both with
+# the same string). No build context, no local checkout required beyond this
+# file, `.env`, and the volumes.
+#
+#   docker compose pull
+#   docker compose up -d
+#
+# Pin a specific release in `.env`:
+#   SHARAM_VERSION=0.3.1
+# Otherwise both images float on `latest`.
+#
+# For local development with HMR (cargo run + dx serve on the host) use the
+# sibling file:
+#   docker compose -f dev.compose.yaml up -d
+#
+# Config flow:
+#   - Backing services use compose env (SURREAL_PASS, RUSTFS_*, etc.)
+#   - Gateway reads SHARAM_* env vars (figment, __ = nesting) — no Sharam.toml
+#     needed inside the container.
+
+services:
+  surrealdb:
+    # Pinned to the latest stable as of 2026-05-05. Bump after checking
+    # https://github.com/surrealdb/surrealdb/releases — the `latest` tag
+    # has flipped between root and uid 65532 (distroless nonroot) in the
+    # past, which silently breaks an existing rocksdb data volume.
+    image: surrealdb/surrealdb:v3.0.5
+    # The v3.x image is distroless and runs as nonroot uid 65532, but its
+    # /data directory isn't chowned at build time — production deploys
+    # should ideally use a pre-chowned bind mount or an init-container
+    # chown step. Running as root keeps the named-volume path simple.
+    user: "0:0"
+    command:
+      - start
+      - --user
+      - root
+      - --pass
+      - ${SURREAL_PASS:-root}
+      - --bind
+      - 0.0.0.0:8000
+      - rocksdb:/data/surreal.db
+    volumes:
+      - surreal-data:/data
+    # No host port binding in prod — only the gateway needs to reach
+    # surrealdb, and it does so over the compose network as `surrealdb:8000`.
+    healthcheck:
+      test: ["CMD", "/surreal", "is-ready", "--endpoint", "http://localhost:8000"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    restart: unless-stopped
+
+  rustfs:
+    # S3-compatible object store for contribution proof-of-payment files.
+    # Pinned to the latest tagged release as of 2026-05-05; bump after
+    # checking https://github.com/rustfs/rustfs/releases for breaking
+    # changes (env var renames in particular have happened pre-1.0).
+    image: rustfs/rustfs:1.0.0-beta.1
+    environment:
+      RUSTFS_VOLUMES: /data
+      RUSTFS_ADDRESS: 0.0.0.0:9000
+      RUSTFS_ACCESS_KEY: ${RUSTFS_USER:-rustfs}
+      RUSTFS_SECRET_KEY: ${RUSTFS_PASS:-rustfs}
+      # Console off by default in prod. Flip to "true" + bind 9001 to a
+      # loopback host port behind an SSH tunnel if you need bucket ops.
+      RUSTFS_CONSOLE_ENABLE: ${RUSTFS_CONSOLE_ENABLE:-false}
+      RUSTFS_OBS_LOGGER_LEVEL: ${RUSTFS_LOG_LEVEL:-warn}
+    volumes:
+      - rustfs-data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-o", "/dev/null", "http://127.0.0.1:9000/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+
+  gateway:
+    image: ghcr.io/darwinsubramaniam/sharam-ledger/gateway:${SHARAM_VERSION:-latest}
+    pull_policy: always
+    environment:
+      SHARAM_GATEWAY__BIND: 0.0.0.0:8080
+      SHARAM_GATEWAY__FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost}
+      SHARAM_GATEWAY__SESSION_SECRET: ${SHARAM_GATEWAY__SESSION_SECRET:?SHARAM_GATEWAY__SESSION_SECRET is required (>=32 bytes)}
+      SHARAM_SURREALDB__ENDPOINT: ws://surrealdb:8000
+      SHARAM_SURREALDB__NAMESPACE: ${SURREAL_NS:-system}
+      SHARAM_SURREALDB__DATABASE: ${SURREAL_DB:-control}
+      SHARAM_SURREALDB__USERNAME: root
+      SHARAM_SURREALDB__PASSWORD: ${SURREAL_PASS:-root}
+      SHARAM_STORAGE__ENDPOINT: http://rustfs:9000
+      SHARAM_STORAGE__REGION: ${STORAGE_REGION:-us-east-1}
+      SHARAM_STORAGE__BUCKET: ${STORAGE_BUCKET:-sharam-proofs}
+      SHARAM_STORAGE__ACCESS_KEY_ID: ${RUSTFS_USER:-rustfs}
+      SHARAM_STORAGE__SECRET_ACCESS_KEY: ${RUSTFS_PASS:-rustfs}
+      SHARAM_GOOGLE__CLIENT_ID: ${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID is required}
+      SHARAM_GOOGLE__CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET is required}
+      SHARAM_GOOGLE__REDIRECT_URI: ${GOOGLE_REDIRECT_URI:?GOOGLE_REDIRECT_URI is required}
+      SHARAM_SMTP__HOST: ${SMTP_HOST:?SMTP_HOST is required}
+      SHARAM_SMTP__PORT: ${SMTP_PORT:-587}
+      SHARAM_SMTP__USERNAME: ${SMTP_USERNAME:?SMTP_USERNAME is required}
+      SHARAM_SMTP__PASSWORD: ${SMTP_PASSWORD:?SMTP_PASSWORD is required}
+      SHARAM_SMTP__ENCRYPTION: ${SMTP_ENCRYPTION:-starttls}
+      SHARAM_SMTP__FROM_EMAIL: ${SMTP_FROM_EMAIL:?SMTP_FROM_EMAIL is required}
+      SHARAM_SMTP__FROM_NAME: ${SMTP_FROM_NAME:-Sharam}
+      SHARAM_SMTP__APP_BASE_URL: ${APP_BASE_URL:?APP_BASE_URL is required}
+      RUST_LOG: ${RUST_LOG:-info,tower_http=debug}
+    depends_on:
+      surrealdb:
+        condition: service_healthy
+      rustfs:
+        condition: service_healthy
+    restart: unless-stopped
+
+  web:
+    image: ghcr.io/darwinsubramaniam/sharam-ledger/web:${SHARAM_VERSION:-latest}
+    pull_policy: always
+    environment:
+      GATEWAY_UPSTREAM: ${GATEWAY_UPSTREAM:-gateway:8080}
+      # Set SITE_ADDRESS to your domain (e.g. sharam.example.com) once you
+      # point DNS — Caddy will provision Let's Encrypt automatically.
+      SITE_ADDRESS: ${SITE_ADDRESS:-:80}
+    ports:
+      - "${WEB_HTTP_PORT:-80}:80"
+      - "${WEB_HTTPS_PORT:-443}:443"
+    depends_on:
+      - gateway
+    restart: unless-stopped
+
+volumes:
+  surreal-data:
+  rustfs-data:

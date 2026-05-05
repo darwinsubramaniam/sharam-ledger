@@ -1,11 +1,17 @@
-name: sharam
+name: sharam-dev
 
-# Default `docker compose up` runs only backing services (surrealdb + rustfs)
-# so you can `cargo run -p gateway` and `dx serve --package sharam-ui` on the
-# host with HMR. To run the full stack (production-shaped, deployable to your
-# server), enable the `app` profile:
+# Development compose. Run with `-f dev.compose.yaml` (this file is NOT picked
+# up automatically — `compose.yaml` is the prod/user file that pulls prebuilt
+# images from GHCR).
 #
-#   docker compose --profile app up -d --build
+#   docker compose -f dev.compose.yaml up -d
+#       → only backing services (surrealdb + rustfs + mailhog), so you can
+#         `cargo run -p gateway` and `dx serve --package sharam-ui` on the
+#         host with HMR.
+#
+#   docker compose -f dev.compose.yaml --profile app up -d --build
+#       → full stack built from local Dockerfiles (production-shaped, useful
+#         for verifying image builds before pushing).
 #
 # Config flow:
 #   - Backing services use compose env (SURREAL_PASS, RUSTFS_*, etc.)

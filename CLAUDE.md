@@ -29,24 +29,28 @@ Required sections: `[gateway]` (with a 32+ byte `session_secret`), `[surrealdb]`
 
 ## Docker / Compose
 
-`compose.yml` at the repo root is the single source of truth for both local dev and personal-server deploys. It uses a profile to switch modes:
+Two compose files at the repo root, split by audience:
 
-- **Dev** — `docker compose up -d` brings up only `surrealdb` + `rustfs` (host ports `127.0.0.1:8000`/`9000`). Run `cargo run -p gateway` and `dx serve --package sharam-ui` on the host for HMR. The `Sharam.toml` on disk is what figment reads.
-- **Server / full stack** — `docker compose --profile app up -d --build` adds `gateway` (the axum binary) and `web` (Caddy serving the Dioxus dist + reverse-proxying `/api/*` → `gateway:8080`). Containers do **not** read `Sharam.toml`; figment falls through to `SHARAM_*` env vars injected by compose.
+- **`compose.yaml`** (default, picked up by bare `docker compose up`) — production / self-host. Pulls the gateway and web **images from GHCR** (`ghcr.io/darwinsubramaniam/sharam-ledger/{gateway,web}`). Tag is `${SHARAM_VERSION:-latest}`; pin a release in `.env` for reproducible deploys. No build context, no source checkout required beyond this file + `.env` + volumes.
+- **`dev.compose.yaml`** (opt-in via `-f dev.compose.yaml`) — development. Defaults to backing services only (`surrealdb` + `rustfs` + `mailhog`, host ports `127.0.0.1:8000`/`9000`/`1025`+`8025`) so `cargo run -p gateway` and `dx serve --package sharam-ui` on the host get HMR. Adds `gateway` + `web` built from the local Dockerfiles under the `app` profile (`--profile app up -d --build`) — useful for verifying image builds before pushing.
+
+In both cases, gateway/web containers do **not** read `Sharam.toml`; figment falls through to `SHARAM_*` env vars injected by compose.
 
 ### File map
 
-- `compose.yml` — service definitions + profiles
+- `compose.yaml` — production stack, GHCR images
+- `dev.compose.yaml` — dev backing services + optional local-build app profile
 - `docker/gateway.Dockerfile` — cargo-chef multi-stage. Scoped to `-p gateway` because `sharam-ui` is a workspace member with `default = ["web"]` (wasm-only); a workspace-wide cook would try to compile dioxus/web for the host target and fail.
 - `docker/web.Dockerfile` — three stages: Tailwind v4 CSS compile (Node) → `dx bundle --release --platform web` (Rust + dx CLI) → Caddy. The wasm bundle is deployment-agnostic; the Google client ID is fetched at runtime from `GET /api/config` on the gateway.
 - `docker/Caddyfile` — `{$SITE_ADDRESS:":80"}` site block; defaults to plain HTTP on `:80`, but pointing `SITE_ADDRESS` at a real domain makes Caddy auto-provision Let's Encrypt.
-- `.env.example` — copy to `.env`. Required: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Compose interpolation uses `:?` so the build refuses to start without them.
+- `.env.example` — copy to `.env`. Required: `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `GOOGLE_REDIRECT_URI`. Optional: `SHARAM_VERSION` to pin GHCR image tag (defaults to `latest`). Compose interpolation uses `:?` so the build refuses to start without the required keys.
 - `.dockerignore` — keeps `target/`, `Sharam.toml`, `.env`, and `**/node_modules/` out of the build context.
 
 ### Watchpoints
 
 - The web image expects the `dx bundle` web output at `target/dx/sharam-ui/release/web/public`. If you upgrade `dioxus-cli` and the path changes, fix the `COPY --from=dx-builder` in `docker/web.Dockerfile`.
-- `compose.yml` pins `surrealdb/surrealdb:latest` and `rustfs/rustfs:latest` — pin to specific versions before treating any deploy as production. The SurrealDB healthcheck shells out to `/surreal is-ready`; if that flag spelling changes between releases, swap for a TCP probe.
+- Both compose files pin `surrealdb/surrealdb` and `rustfs/rustfs` to specific tags. The SurrealDB healthcheck shells out to `/surreal is-ready`; if that flag spelling changes between releases, swap for a TCP probe.
+- `compose.yaml` floats gateway/web on `latest` by default. For real deploys set `SHARAM_VERSION=0.3.1` (or whatever) in `.env` so a `docker compose pull` doesn't silently roll you forward.
 - The Google client ID lives only on the gateway (`SHARAM_GOOGLE__CLIENT_ID` env var) — the web image is a pure static bundle and reads the client ID over the wire from `GET /api/config`. One source of truth, no build-arg / env-var drift.
 
 ## CI
