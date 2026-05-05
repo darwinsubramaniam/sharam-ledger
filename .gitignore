@@ -5,9 +5,13 @@ Cargo.lock.bak
 Sharam.toml
 .env
 .env.local
+.env.*.local
 
 # Local SurrealDB rocksdb store
 .surreal-data/
+
+# Claude Code per-checkout state
+.claude/
 
 # OS
 .DS_Store
