@@ -14,6 +14,7 @@ use ledger::{
     AccumulationPoint, ContributionRecord, NewContribution, PeriodSummary, RecordIdKey,
     TenantSettings,
 };
+use storage::PROOF_KEY_PREFIX;
 
 use crate::state::AppState;
 
@@ -269,6 +270,20 @@ async fn post_contribution(
 
     if payload.amount_cents <= 0 {
         return Err(err(StatusCode::BAD_REQUEST, "amount_cents must be > 0"));
+    }
+
+    // If a proof was attached, it must be a key the proofs route just minted
+    // for THIS tenant. The keys are server-generated (uuidv7), so requiring
+    // the slug-scoped prefix prevents claiming a foreign tenant's upload —
+    // the upload route itself owns email-level scoping inside the prefix.
+    if let Some(ref pk) = payload.proof_key {
+        let expected_prefix = format!("{PROOF_KEY_PREFIX}/{slug}/");
+        if !pk.starts_with(&expected_prefix) {
+            return Err(err(
+                StatusCode::BAD_REQUEST,
+                "proof_key does not belong to this tenant",
+            ));
+        }
     }
 
     // Read settings → derive cadence + current period. Members never write

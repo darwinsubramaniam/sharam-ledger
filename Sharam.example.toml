@@ -16,6 +16,12 @@ database = "main"
 username = "root"
 password = "root"
 
+# Object store for contribution proof-of-payment files (PDFs and receipt
+# images). S3-compatible — defaults to RustFS via compose. To use AWS S3
+# instead, leave `endpoint` empty (figment falls back to the AWS default
+# for `region`) and set the access keys to IAM credentials with
+# PutObject/GetObject permissions on `bucket`. The bucket is created on
+# gateway startup if it doesn't already exist.
 [storage]
 endpoint = "http://127.0.0.1:9000"
 region = "us-east-1"

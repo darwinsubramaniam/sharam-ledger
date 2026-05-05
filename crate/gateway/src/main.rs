@@ -10,6 +10,7 @@ use auth::{GoogleVerifier, SessionSigner};
 use axum::Router;
 use http::{HeaderValue, Method, header};
 use ledger::Ledger;
+use storage::ProofStore;
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing::info;
 
@@ -35,7 +36,13 @@ async fn main() -> anyhow::Result<()> {
         .await
         .context("migrating tenant schemas")?;
 
-    let app = build_app(&cfg, ledger)?;
+    let proofs = ProofStore::from_config(&cfg.storage).context("building proof store")?;
+    proofs
+        .ensure_bucket()
+        .await
+        .context("ensuring proof bucket exists")?;
+
+    let app = build_app(&cfg, ledger, proofs)?;
 
     let addr: SocketAddr = cfg
         .gateway
@@ -51,7 +58,7 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
-fn build_app(cfg: &AppConfig, ledger: Ledger) -> anyhow::Result<Router> {
+fn build_app(cfg: &AppConfig, ledger: Ledger, proofs: ProofStore) -> anyhow::Result<Router> {
     let cors = CorsLayer::new()
         .allow_origin(
             cfg.gateway
@@ -78,6 +85,7 @@ fn build_app(cfg: &AppConfig, ledger: Ledger) -> anyhow::Result<Router> {
         sessions: SessionSigner::new(secret),
         ledger,
         mailer,
+        proofs,
     };
 
     let app = Router::new()
@@ -90,6 +98,7 @@ fn build_app(cfg: &AppConfig, ledger: Ledger) -> anyhow::Result<Router> {
         .merge(routes::members::router())
         .merge(routes::contributions::router())
         .merge(routes::carry_forward::router())
+        .merge(routes::proofs::router())
         .with_state(state)
         .layer(cors)
         .layer(TraceLayer::new_for_http());

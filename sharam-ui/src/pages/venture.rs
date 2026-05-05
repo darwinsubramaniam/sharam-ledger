@@ -244,6 +244,8 @@ struct Contribution {
     status: String,
     note: Option<String>,
     submitted_at: String,
+    #[serde(default)]
+    proof_key: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -277,6 +279,8 @@ struct PostContributionRequest {
     amount_cents: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
     note: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    proof_key: Option<String>,
 }
 
 async fn submit_contribution(slug: &str, req: PostContributionRequest) -> Result<(), ApiError> {
@@ -292,6 +296,102 @@ async fn submit_contribution(slug: &str, req: PostContributionRequest) -> Result
         return Err(into_api_error(resp).await);
     }
     Ok(())
+}
+
+// ─── Proof-of-payment upload ───────────────────────────────────────────────
+
+/// Hard cap shared with the gateway. Keep in sync with `MAX_PROOF_BYTES` in
+/// `crate/gateway/src/routes/proofs.rs` so the UI can short-circuit oversized
+/// files instead of round-tripping to a 413.
+const MAX_PROOF_BYTES: usize = 10 * 1024 * 1024;
+
+#[derive(Deserialize)]
+struct UploadProofResponse {
+    proof_key: String,
+}
+
+#[derive(Deserialize)]
+struct ProofUrlResponse {
+    url: String,
+}
+
+/// Map a filename's extension to one of the four mime types the gateway
+/// accepts for proofs. Returns `None` for everything else; the upload would
+/// 415 on the server anyway, but bouncing locally is friendlier.
+fn proof_content_type(filename: &str) -> Option<&'static str> {
+    let lower = filename.to_lowercase();
+    if lower.ends_with(".jpg") || lower.ends_with(".jpeg") {
+        Some("image/jpeg")
+    } else if lower.ends_with(".png") {
+        Some("image/png")
+    } else if lower.ends_with(".webp") {
+        Some("image/webp")
+    } else if lower.ends_with(".pdf") {
+        Some("application/pdf")
+    } else {
+        None
+    }
+}
+
+async fn upload_proof(
+    slug: &str,
+    content_type: &str,
+    bytes: Vec<u8>,
+) -> Result<String, ApiError> {
+    let resp = authed(
+        reqwest::Method::POST,
+        &format!("/api/tenants/{slug}/proofs"),
+    )?
+    .header(reqwest::header::CONTENT_TYPE, content_type)
+    .body(bytes)
+    .send()
+    .await
+    .map_err(|e| ApiError::Other(format!("{e:?}")))?;
+    if !resp.status().is_success() {
+        return Err(into_api_error(resp).await);
+    }
+    let body: UploadProofResponse = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::Other(format!("decode upload: {e}")))?;
+    Ok(body.proof_key)
+}
+
+async fn fetch_proof_url(slug: &str, proof_key: &str) -> Result<String, ApiError> {
+    let encoded = urlencode(proof_key);
+    let resp = authed(
+        reqwest::Method::GET,
+        &format!("/api/tenants/{slug}/proofs/url?key={encoded}"),
+    )?
+    .send()
+    .await
+    .map_err(|e| ApiError::Other(format!("{e:?}")))?;
+    if !resp.status().is_success() {
+        return Err(into_api_error(resp).await);
+    }
+    let body: ProofUrlResponse = resp
+        .json()
+        .await
+        .map_err(|e| ApiError::Other(format!("decode proof url: {e}")))?;
+    Ok(body.url)
+}
+
+/// Minimal percent-encode for the proof_key query value. Keys are
+/// `tenants/{slug}/{frag}/{uuid}.{ext}` — `/` and `.` need encoding when
+/// they'd otherwise be path delimiters; we encode aggressively to be safe.
+fn urlencode(s: &str) -> String {
+    let mut out = String::with_capacity(s.len() * 3);
+    for b in s.as_bytes() {
+        let c = *b;
+        let safe = c.is_ascii_alphanumeric() || matches!(c, b'-' | b'_' | b'.' | b'~');
+        if safe {
+            out.push(c as char);
+        } else {
+            out.push('%');
+            out.push_str(&format!("{:02X}", c));
+        }
+    }
+    out
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -1330,6 +1430,13 @@ fn MyPeriodPanel(
     let mut note_input = use_signal(String::new);
     let mut submitting = use_signal(|| false);
     let mut submit_error: Signal<Option<String>> = use_signal(|| None);
+    // Proof-of-payment is split into two signals so re-renders don't clone
+    // the (potentially multi-MB) byte buffer on every form keystroke. The
+    // meta signal is read by the render path; the bytes signal is only
+    // touched at submit time (taken via `.write().take()`).
+    let mut selected_proof_meta: Signal<Option<(String, &'static str, usize)>> =
+        use_signal(|| None);
+    let mut selected_proof_bytes: Signal<Option<Vec<u8>>> = use_signal(|| None);
 
     let section_class = if compact {
         "rise"
@@ -1402,7 +1509,36 @@ fn MyPeriodPanel(
                                 if n.is_empty() { None } else { Some(n) }
                             };
                             submitting.set(true);
-                            let req = PostContributionRequest { amount_cents: cents, note };
+
+                            // Upload the proof first when one is staged.
+                            // Orphaned uploads are invisible to the user
+                            // and need a separate sweeper, so we abort
+                            // before touching the ledger if the upload
+                            // fails. Take ownership of bytes/meta in one
+                            // shot; on failure the user re-picks.
+                            let staged_bytes = selected_proof_bytes.write().take();
+                            let staged_meta = selected_proof_meta.write().take();
+                            let proof_key = match (staged_meta, staged_bytes) {
+                                (Some((_, ct, _)), Some(bytes)) => {
+                                    match upload_proof(&slug, ct, bytes).await {
+                                        Ok(k) => Some(k),
+                                        Err(e) => {
+                                            submit_error.set(Some(format!(
+                                                "Proof upload failed: {e}"
+                                            )));
+                                            submitting.set(false);
+                                            return;
+                                        }
+                                    }
+                                }
+                                _ => None,
+                            };
+
+                            let req = PostContributionRequest {
+                                amount_cents: cents,
+                                note,
+                                proof_key,
+                            };
                             match submit_contribution(&slug, req).await {
                                 Ok(()) => {
                                     amount_input.set(String::new());
@@ -1527,6 +1663,94 @@ fn MyPeriodPanel(
                                     }
                                 }
 
+                                // Proof of payment — optional file input.
+                                // The user picks a receipt; we read the bytes
+                                // into the `selected_proof` signal here so
+                                // submission doesn't have to await the file
+                                // engine. Upload itself happens at submit.
+                                div {
+                                    label {
+                                        class: "block text-[11.5px] text-ink-faint font-mono uppercase tracking-[0.1em] mb-1.5",
+                                        "Proof of payment "
+                                        span { class: "text-ink-faint normal-case font-light", "· optional · jpg/png/webp/pdf, ≤ 10 MB" }
+                                    }
+                                    input {
+                                        r#type: "file",
+                                        accept: "image/jpeg,image/png,image/webp,application/pdf",
+                                        disabled: submitting(),
+                                        class: "block w-full text-[13px] text-ink-soft file:mr-3 file:py-2 file:px-3 file:rounded-md file:border file:border-rule file:bg-bone-soft file:text-ink hover:file:bg-bone file:font-mono file:text-[12px] file:cursor-pointer cursor-pointer",
+                                        onchange: move |e| async move {
+                                            submit_error.set(None);
+                                            let mut clear = move || {
+                                                selected_proof_meta.set(None);
+                                                selected_proof_bytes.set(None);
+                                            };
+                                            let Some(file) = e.files().into_iter().next() else {
+                                                clear();
+                                                return;
+                                            };
+                                            let name = file.name();
+                                            // Prefer the browser-reported MIME (file picker hands
+                                            // it to us); fall back to extension sniff for PDFs etc.
+                                            // that some platforms label as octet-stream.
+                                            let ct = match file.content_type().as_deref() {
+                                                Some("image/jpeg") => Some("image/jpeg"),
+                                                Some("image/png") => Some("image/png"),
+                                                Some("image/webp") => Some("image/webp"),
+                                                Some("application/pdf") => Some("application/pdf"),
+                                                _ => proof_content_type(&name),
+                                            };
+                                            let Some(ct) = ct else {
+                                                submit_error.set(Some(
+                                                    "Receipt must be JPG, PNG, WebP, or PDF.".into(),
+                                                ));
+                                                clear();
+                                                return;
+                                            };
+                                            if file.size() as usize > MAX_PROOF_BYTES {
+                                                submit_error.set(Some(format!(
+                                                    "Receipt is too large ({} MB). Max 10 MB.",
+                                                    file.size() as usize / (1024 * 1024)
+                                                )));
+                                                clear();
+                                                return;
+                                            }
+                                            let bytes = match file.read_bytes().await {
+                                                Ok(b) => b.to_vec(),
+                                                Err(err) => {
+                                                    submit_error.set(Some(format!(
+                                                        "Couldn't read the selected file: {err}"
+                                                    )));
+                                                    clear();
+                                                    return;
+                                                }
+                                            };
+                                            let size = bytes.len();
+                                            selected_proof_meta.set(Some((name, ct, size)));
+                                            selected_proof_bytes.set(Some(bytes));
+                                        },
+                                    }
+                                    {selected_proof_meta().map(|(name, _, size)| {
+                                        let kb = size.div_ceil(1024);
+                                        rsx! {
+                                            div {
+                                                class: "mt-2 flex items-center gap-2 text-[12px] text-ink-soft font-mono",
+                                                span { class: "truncate", "Staged: {name} · {kb} KB" }
+                                                button {
+                                                    r#type: "button",
+                                                    disabled: submitting(),
+                                                    onclick: move |_| {
+                                                        selected_proof_meta.set(None);
+                                                        selected_proof_bytes.set(None);
+                                                    },
+                                                    class: "text-evergreen hover:text-evergreen-deep underline underline-offset-2",
+                                                    "remove"
+                                                }
+                                            }
+                                        }
+                                    })}
+                                }
+
                                 button {
                                     class: "mt-1 inline-flex items-center justify-center gap-2 bg-evergreen hover:bg-evergreen-deep disabled:opacity-60 disabled:cursor-not-allowed text-paper text-[14px] font-medium px-5 py-3 rounded-md transition-colors",
                                     disabled: submitting(),
@@ -1621,6 +1845,7 @@ fn MyPeriodPanel(
                                             idx: i,
                                             row: row.clone(),
                                             currency: currency.clone(),
+                                            slug: slug.clone(),
                                         }
                                     }
                                 }
@@ -1646,7 +1871,13 @@ fn SmallFact(label: String, value: String) -> Element {
 }
 
 #[component]
-fn ContributionRowView(idx: usize, row: Contribution, currency: String) -> Element {
+fn ContributionRowView(
+    idx: usize,
+    row: Contribution,
+    currency: String,
+    /// Tenant slug — needed to resolve the proof URL via the gateway.
+    slug: String,
+) -> Element {
     let stripe = if idx % 2 == 1 {
         "bg-bone-soft/50"
     } else {
@@ -1664,6 +1895,9 @@ fn ContributionRowView(idx: usize, row: Contribution, currency: String) -> Eleme
         "rejected" => "pill pill-negative",
         _ => "pill pill-neutral",
     };
+    let proof_key = row.proof_key.clone();
+    let mut proof_error: Signal<Option<String>> = use_signal(|| None);
+    let mut proof_loading = use_signal(|| false);
     rsx! {
         div {
             class: "grid grid-cols-[1fr_auto_auto] gap-4 items-center px-5 py-3 border-b border-rule-soft last:border-b-0 {stripe}",
@@ -1671,6 +1905,43 @@ fn ContributionRowView(idx: usize, row: Contribution, currency: String) -> Eleme
                 p { class: "text-[13px] text-ink font-mono tnum", "{when} UTC" }
                 if !note.is_empty() {
                     p { class: "text-[12.5px] text-ink-soft mt-0.5", "{note}" }
+                }
+                if let Some(pk) = proof_key {
+                    div {
+                        class: "mt-1 flex items-center gap-2",
+                        button {
+                            r#type: "button",
+                            class: "text-[12px] font-mono text-evergreen hover:text-evergreen-deep underline underline-offset-2 disabled:opacity-50",
+                            disabled: proof_loading(),
+                            onclick: {
+                                let slug = slug.clone();
+                                let pk = pk.clone();
+                                move |_| {
+                                    let slug = slug.clone();
+                                    let pk = pk.clone();
+                                    async move {
+                                        proof_error.set(None);
+                                        proof_loading.set(true);
+                                        match fetch_proof_url(&slug, &pk).await {
+                                            Ok(url) => {
+                                                if let Some(window) = web_sys::window() {
+                                                    let _ = window.open_with_url_and_target(
+                                                        &url, "_blank",
+                                                    );
+                                                }
+                                            }
+                                            Err(e) => proof_error.set(Some(e.to_string())),
+                                        }
+                                        proof_loading.set(false);
+                                    }
+                                }
+                            },
+                            if proof_loading() { "Opening receipt…" } else { "View receipt" }
+                        }
+                    }
+                    if let Some(msg) = proof_error() {
+                        p { class: "text-[11.5px] text-negative font-mono mt-0.5", "{msg}" }
+                    }
                 }
             }
             div { class: "text-right",

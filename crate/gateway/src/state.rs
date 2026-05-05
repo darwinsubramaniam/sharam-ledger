@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use auth::{GoogleVerifier, SessionSigner};
 use ledger::Ledger;
+use storage::ProofStore;
 
 use crate::mailer::Mailer;
 
@@ -16,4 +17,7 @@ pub struct AppState {
     pub sessions: SessionSigner,
     pub ledger: Ledger,
     pub mailer: Mailer,
+    /// S3-compatible store for contribution proof-of-payment files
+    /// (`POST /api/tenants/:slug/proofs` writes here).
+    pub proofs: ProofStore,
 }

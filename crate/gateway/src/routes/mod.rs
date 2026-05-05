@@ -5,5 +5,6 @@ pub mod health;
 pub mod invites;
 pub mod me;
 pub mod members;
+pub mod proofs;
 pub mod settings;
 pub mod tenants;
