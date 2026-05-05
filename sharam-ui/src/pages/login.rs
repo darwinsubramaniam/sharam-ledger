@@ -116,13 +116,13 @@ pub fn Login() -> Element {
                     class: "relative px-5 pt-8 pb-12 sm:px-8 sm:pt-10 sm:pb-16 lg:px-16 lg:pt-14 flex flex-col justify-between rise",
 
                     div {
-                        class: "flex items-center gap-3",
+                        class: "flex items-baseline gap-3",
                         span {
                             class: "text-[22px] text-evergreen leading-none",
                             style: "font-family: var(--font-tamil);",
                             "ஷ"
                         }
-                        span { class: "font-display text-[18px] font-semibold tracking-[-0.01em]", "Sharam" }
+                        span { class: "font-display text-[18px] font-semibold tracking-[-0.01em] leading-none", "Sharam" }
                     }
 
                     div {

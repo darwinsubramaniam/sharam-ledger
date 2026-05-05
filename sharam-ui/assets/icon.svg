@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="80 220 570 530" fill="none">
+  <defs>
+    <style>
+      .bone { stroke:#f7f3eb; fill:none; }
+      .navy-fill { fill:#062B4E; }
+      .teal-fill { fill:#17C5B1; }
+      .glyph { font-family: 'Noto Sans Tamil', 'Latha', 'Arial Unicode MS', sans-serif; font-weight: 700; }
+    </style>
+  </defs>
+
+  <rect x="95" y="235" width="540" height="500" rx="50" class="navy-fill"/>
+
+  <line x1="470" y1="235" x2="470" y2="735" class="bone" stroke-width="16"/>
+  <line x1="470" y1="345" x2="635" y2="345" class="bone" stroke-width="14"/>
+  <line x1="470" y1="465" x2="635" y2="465" class="bone" stroke-width="14"/>
+  <line x1="95" y1="610" x2="635" y2="610" class="bone" stroke-width="16"/>
+
+  <rect x="536" y="380" width="52" height="18" rx="9" class="teal-fill"/>
+  <rect x="536" y="500" width="52" height="18" rx="9" class="teal-fill"/>
+  <rect x="536" y="540" width="52" height="18" rx="9" class="teal-fill"/>
+  <rect x="536" y="650" width="52" height="18" rx="9" class="teal-fill"/>
+
+  <text x="135" y="520" class="glyph teal-fill" font-size="240">ஷ</text>
+  <circle cx="426" cy="505" r="15" class="teal-fill"/>
+
+  <line x1="110" y1="610" x2="305" y2="610" class="bone" stroke-width="14"/>
+</svg>

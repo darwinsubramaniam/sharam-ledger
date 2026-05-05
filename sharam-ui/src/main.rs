@@ -39,7 +39,7 @@ enum Route {
     AdminInvites { slug: String },
 }
 
-const FAVICON: Asset = asset!("/assets/favicon.ico");
+const FAVICON: Asset = asset!("/assets/favicon.svg");
 const MAIN_CSS: Asset = asset!("/assets/main.css");
 const TAILWIND_CSS: Asset = asset!("/assets/tailwind.css");
 const DX_COMPONENTS_THEME_CSS: Asset = asset!("/assets/dx-components-theme.css");
@@ -61,7 +61,7 @@ fn App() -> Element {
     };
 
     rsx! {
-        document::Link { rel: "icon", href: FAVICON }
+        document::Link { rel: "icon", r#type: "image/svg+xml", href: FAVICON }
         document::Stylesheet { href: DX_COMPONENTS_THEME_CSS }
         document::Stylesheet { href: MAIN_CSS }
         document::Stylesheet { href: TAILWIND_CSS }
@@ -95,13 +95,13 @@ fn Home() -> Element {
             header {
                 class: "relative z-10 px-8 lg:px-14 py-6 flex items-center justify-between rise",
                 div {
-                    class: "flex items-center gap-3",
+                    class: "flex items-baseline gap-3",
                     span {
                         class: "text-[22px] text-evergreen leading-none",
                         style: "font-family: var(--font-tamil);",
                         "ஷ"
                     }
-                    span { class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink", "Sharam" }
+                    span { class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink leading-none", "Sharam" }
                 }
                 nav {
                     class: "flex items-center gap-7",

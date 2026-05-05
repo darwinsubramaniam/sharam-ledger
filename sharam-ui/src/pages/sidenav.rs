@@ -191,14 +191,14 @@ pub fn Sidenav(active: String, children: Element) -> Element {
                     }
                     a {
                         href: "/dashboard",
-                        class: "flex items-center gap-2 min-w-0",
+                        class: "flex items-baseline gap-2 min-w-0",
                         span {
                             class: "text-[20px] text-evergreen leading-none",
                             style: "font-family: var(--font-tamil);",
                             "ஷ"
                         }
                         span {
-                            class: "font-display text-[16px] font-semibold tracking-[-0.01em] truncate",
+                            class: "font-display text-[16px] font-semibold tracking-[-0.01em] truncate leading-none",
                             "Sharam"
                         }
                     }
@@ -227,14 +227,14 @@ fn SidenavBody(active: String, on_pick: EventHandler<()>) -> Element {
         a {
             href: "/",
             onclick: move |_| on_pick_for_nav.call(()),
-            class: "px-6 py-5 flex items-center gap-3 border-b border-rule hover:bg-bone-soft transition-colors shrink-0",
+            class: "px-6 py-5 flex items-baseline gap-3 border-b border-rule hover:bg-bone-soft transition-colors shrink-0",
             span {
                 class: "text-[22px] text-evergreen leading-none",
                 style: "font-family: var(--font-tamil);",
                 "ஷ"
             }
             span {
-                class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink",
+                class: "font-display text-[18px] font-semibold tracking-[-0.01em] text-ink leading-none",
                 "Sharam"
             }
         }
